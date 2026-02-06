@@ -1,0 +1,208 @@
+﻿The Liquid Glass Paradigm: Native Animation Enhancements and UI Framework Architectures in iOS 26
+The release of iOS 26 represents a seminal transformation in the architectural philosophy of Apple’s mobile ecosystem, marking the first major design overhaul since the transition to flat design in 2013.1 At the center of this evolution is the transition to a year-based naming convention, effectively skipping version numbers to align all software releases—including iPadOS 26, macOS Tahoe, watchOS 26, tvOS 26, and visionOS 26—with the 2026 calendar cycle.3 This synchronization is more than a marketing refinement; it provides a unified development target for a new generation of applications built upon "Liquid Glass," a software-based material that integrates real-time optical refraction, fluid motion, and generative depth.5 For developers and designers targeting high-end experiences, the iOS 26 SDK and SwiftUI 7 framework introduce sophisticated animation primitives and structural paradigms that prioritize content immersion while maintaining a tactile, responsive functional layer.8
+Optical Foundations: The Material Science of Liquid Glass
+Liquid Glass serves as the foundational design language of iOS 26, replacing the static Gaussian blur of previous iterations with a dynamic system of light bending, lensing, and specular reflection.5 This material is characterized by its ability to refract underlying content in real-time, creating a sense of physical presence for user interface elements.8 The implementation of Liquid Glass is strictly reserved for the navigation and control layer, ensuring that the primary content remains the focal point while the interface provides a clear, interactive functional overlay.9
+Refraction, Lensing, and Material Behavior
+The optical behavior of Liquid Glass is governed by high-performance shaders that simulate the way light passes through physical media. Unlike traditional transparency, which simply reduces the opacity of an element, Liquid Glass modulates the light bending—a process termed "lensing"—to concentrate background colors and shapes along the edges of a UI component.8 This results in a material that feels "alive," as it reacts to changes in the background content and device orientation by shifting its internal reflections and highlights.9
+
+
+Material Property
+	Technical Mechanism
+	User Experience Impact
+	Lensing
+	Real-time light concentration along component boundaries.8
+	Creates a tactile, physical sense of depth and material quality.7
+	Refraction
+	Dynamic bending of background content based on element geometry.5
+	Ensures that foreground controls are visually separated from but connected to content.7
+	Specular Highlights
+	Light reflections that shift based on device gyroscope and ambient light.12
+	Enhances the perception of high-end craftsmanship and responsive design.11
+	Fluidity
+	Gel-like flexibility and immediate response to touch interactions.9
+	Provides instant visual gratification during interaction, making the UI feel natural.9
+	The computational power required to render these effects in real-time is substantial, and Apple Silicon serves as the primary enabler for this design language.7 By utilizing the Neural Engine and advanced GPU capabilities, the system can calculate these refractive patterns at the 120Hz refresh rate of ProMotion displays, ensuring that the motion feels organic and lag-free.5
+Strategic Material Variants
+To provide developers with a nuanced toolkit, the iOS 26 SDK defines several material variants, each optimized for specific UI contexts and visibility requirements.9
+* Regular Variant: The standard implementation for toolbars, buttons, and navigation bars. It provides a balanced level of refraction and frosting to ensure that text and icons remain legible over diverse backgrounds.9
+* Clear Variant: A highly transparent material used for small floating controls, particularly over media-rich content like high-resolution photography or maps.5 The clear variant relies on bold foreground elements to maintain contrast while allowing the underlying content to shine through with minimal distortion.9
+* Identity Variant: A conditional material used to signify state changes. It allows developers to toggle the glass effect off or transition it into a branded color layer while maintaining the physical properties of the container.9
+The design guidelines for the "Clear" variant are stringent, requiring that the background content be visually rich and that the foreground content be sufficiently prominent to meet accessibility standards.9 Overuse of the material can lead to visual clutter, distracting from the primary content that Liquid Glass is meant to elevate.10
+SwiftUI 7: Architectural Evolution for Dynamic UI
+SwiftUI 7 introduces the primary framework enhancements necessary to implement the Liquid Glass paradigm natively. These updates move beyond static layout definitions toward a model of "coordinated transitions" and "material containers" that allow views to morph, merge, and react to user input with unprecedented fluidity.11
+Glass Effect Containers and Unions
+A central concept in the new framework is the GlassEffectContainer, which serves as a shared sampling region for multiple refractive elements.9 Rendering refraction for individual, isolated views is GPU-intensive; by grouping related components within a container, the system can optimize the sampling of the background content, significantly improving performance.15
+A more advanced implementation is the glassEffectUnion, which allows multiple distinct views—such as a vertical stack of buttons—to contribute to a single, unified Liquid Glass shape.15 This technique is used extensively in system applications like Apple Maps, where disparate buttons are visually merged into a single "pill" that shares its lensing and specular highlights.16
+
+
+Modifier
+	Primary Function
+	Implementation Insight
+	.glassEffect()
+	Applies the Liquid Glass material to a custom view.11
+	Allows for tinting, shape customization (e.g., Capsule or RoundedRectangle), and interactive behaviors.9
+	GlassEffectContainer
+	Optimizes rendering for multiple glass elements.9
+	Required for sharing sampling regions and enabling morphing transitions between children.15
+	glassEffectUnion()
+	Merges multiple views into a single refractive shape.15
+	Elements must share a namespace and ID, and use identical glass variants to group correctly.16
+	glassEffectID()
+	Coordinates transitions for morphing animations.11
+	Enables the "zoom" effect where a button fluidly transforms into a sheet or menu.9
+	These modifiers require a shared Namespace to function correctly, ensuring that the system can track the geometry of elements as they appear or disappear due to state changes.15 This allows the shapes to "morph" together or apart, creating a transition that feels physically connected rather than a simple cross-fade.11
+The Morphing Transition Model
+iOS 26 replaces traditional modal presentation transitions with a morphing model, where a destination view—such as a sheet or a navigation panel—visually expands from the source element that initiated it.5 This "zoom" transition is implemented using the matchedTransitionSource() modifier on the source button and a corresponding navigationTransition(.zoom) on the presented content.18
+This architectural shift creates a stronger sense of spatial orientation for the user. When a sheet expands from a button in a toolbar, the visual link between the action and the result is maintained.18 To support this, the system mandates that the source view be contained within a NavigationStack or NavigationSplitView, ensuring that the spatial coordinate system is consistent across the transition.18
+Motion Design Philosophy: The "Alive" Interface
+The motion design language of iOS 26 is characterized by a transition from mechanical movements to organic behaviors. Animations are no longer just transitions between states; they are a continuous dialogue with the user, providing tactile feedback that reinforces the physical nature of the Liquid Glass material.5
+Principles of Premium Motion
+To achieve a high-end feel, designers must adhere to several core principles that govern how elements move and react.19
+* Interactive Vitality: Controls in iOS 26 are described as "coming alive" during interaction.5 When a user touches a button or slider, the element "lifts" into the Liquid Glass layer, increasing its refraction and generating a localized glow that follows the touch point.9 This is facilitated by the .interactive() modifier, which triggers scaling on press, shimmering effects, and haptic synchronization.9
+* Directional Consistency: Every movement follows a strict set of rules aligned with the app's navigation axis. For vertical layouts, menus open downward; for horizontal navigation, they slide in from the side.19 This consistency helps users build an accurate mental map of the application's structure, making the interface feel intuitive and predictable.19
+* Timing and Rhythm: Premium animations avoid uniform speeds, instead favoring easing curves that mimic real-world inertia. Typical UI interactions are optimized to fall between 100ms and 500ms, with quick feedback (such as toggles) remaining under 200ms and major transitions lasting between 300ms and 500ms to allow the user to track the structural change without experiencing sluggishness.19
+* Staggered Transitions: To avoid visual noise during complex views, elements are revealed in a sequence based on their hierarchy. Main content appears first, followed by secondary items like tags, buttons, and helper text.19 This staggered approach guides the user's eye to the most important information first.19
+Spatial Awareness and Hierarchy
+Motion in iOS 26 is used to communicate spatial relationships that exist "beyond the screen".19 When a new layer appears, the background content often shrinks slightly—typically to 95% or 90% of its original size—and darkens, reinforcing the idea that the new view is floating above the current context.19 This use of scaling and dimming creates a physical stacking effect, ensuring that the user always understands where they are within the app's hierarchy.19
+The Spatial Revolution: Generative AI and Depth
+One of the most innovative features of iOS 26 is its ability to transform static content into dynamic, three-dimensional experiences through "Spatial Scenes".3 This represents a fusion of computer vision and generative AI, allowing the iPhone to bring depth to images that were originally captured in a flat, 2D format.5
+Spatial Scenes and the Depth Pro Model
+Spatial Scenes work by analyzing a photo to create an insanely precise depth map—even in complex situations involving hair, leaves, or mesh-like structures.22 This capability is powered by a new generative AI algorithm, likely based on Apple’s "Depth Pro" model, which identifies subjects and background elements in under a second.21
+
+
+Feature Component
+	Mechanism of Action
+	Practical Application
+	Saliency Detection
+	Identifies primary subjects and separates them from the background.21
+	Used for the "Fluid Time" repositioning on the lock screen.3
+	Inpainting
+	Generatively fills in missing data behind foreground objects as they move.22
+	Enables "looking around" subjects during parallax motion without leaving "holes" in the image.22
+	Parallax Mapping
+	Shifts foreground and background at different rates based on device tilt.21
+	Creates a lifelike 3D effect for wallpapers and gallery items.5
+	Dynamic Refraction
+	Integrates photo content into the Liquid Glass layer for media controls.5
+	Immersive animated album art that interacts with the playback UI.5
+	Importantly, Spatial Scenes do not require the presence of hardware depth sensors like LiDAR for playback, as the generative model creates the necessary depth data computationally.21 This allows the feature to work on any photo in a user's library, including those taken years prior or on different cameras.5
+Fluid Time and Adaptive Layouts
+On the Lock Screen, the system introduces "Fluid Time," where the time display dynamically reposition itself based on the saliency of the wallpaper photo.3 Instead of being fixed to a specific coordinate, the time identifies "free space" in the image and adjusts its position and depth, often layering slightly behind the foreground subject to create a more integrated and artistic layout.3 This adaptability ensures that the subject of the photo remains the primary focus while the functional information remains clearly visible.5
+System Component Evolution: Floating and Contextual UI
+The structural design of iOS 26 moves away from UI elements pinned to the device's bezels toward floating, bubble-like containers that appear and disappear based on context.5 This "detachment" from the screen edges emphasizes the Liquid Glass material and the idea of a functional layer hovering above the content.6
+Floating Tab Bars and Toolbars
+Key navigation elements like tab bars in Apple Music, Podcasts, and News have been redesigned to float above the content.3 These tab bars are dynamic; they shrink when a user scrolls down to provide more room for content and expand instantly when the user scrolls up or taps the tab region.3 On iPadOS, this is complemented by a new floating menu bar for faster access to commands.10
+
+
+Component
+	Design Shift in iOS 26
+	Functional Benefit
+	Tab Bar
+	Floats above content; dynamically minimizes during scroll.3
+	Maximizes content visibility while keeping navigation accessible.5
+	In-place Alerts
+	Expand directly from the button that initiated the action.5
+	Reduces the distance to interaction, making deletions or confirmations quicker.5
+	Search Fields
+	Bottom-aligned on iPhone for reachability; morphing tab behavior.11
+	Improves one-handed use and creates a more integrated search experience.11
+	Sidebars
+	Support background extension effects and immersive blurs.10
+	Maintains legibility of navigation items while creating a sense of depth.10
+	In-Place Interaction and Micro-transitions
+iOS 26 introduces "in-place alerts," where confirmation dialogs and menus expand directly from the source button.5 This replaces the center-screen modal alerts that disrupted the user's flow. For example, when a user taps a delete button, the confirmation "Are you sure?" expands from that specific button in the Liquid Glass layer, allowing the user to complete the action with minimal thumb movement.5
+High-Performance Synchronization: ProMotion and Haptics
+To maintain the high-end feel of the Liquid Glass interface, the system requires precise synchronization between the visual layer and the haptic engine, all running at the peak refresh rate of ProMotion displays.14
+ProMotion Frame Rate Optimization
+iOS 26 provides refined guidance for developers on how to utilize variable refresh rates to balance performance and power consumption.14 The system classifies animations into several categories, each with a recommended CAFrameRateRange.14
+* High-Impact Animations: These include full-screen transitions, sheet expansions, and 3D camera movements. They target a 120Hz maximum and a minimum of 80Hz, ensuring that the most visible interactions are fluid and responsive.14
+* Micro-movements: Changes in opacity, background blur effects, or small color transitions do not benefit significantly from high refresh rates. These target the system default range to preserve battery life.14
+* Low-Speed Content: Elements like moving clock pointers or slow progress bars are optimized to run at very low frame rates (8Hz to 30Hz), which is sufficient for smooth movement in these specific contexts while drastically reducing power consumption.14
+The latency from a touch event to a visual response is significantly reduced at 120Hz, dropping to 8.33ms compared to 16.67ms on standard 60Hz displays.14 This reduction in lag is critical for the "alive" feeling of Liquid Glass, as any delay would break the illusion of the material's physical responsiveness.14
+Advanced Haptic Feedback
+The haptic system in iOS 26 is integrated more deeply with the visual rendering pipeline. The new UICanvasFeedbackGenerator is specifically designed for high-end creative and productivity applications, providing tactile cues when objects snap to grids or align with other interface elements on a canvas.28 This allows for a "physical" editing experience where the user can feel the boundaries and alignments of their content.28
+For developers requiring even finer control, the CHHapticEngine allows for the creation of complex haptic patterns that can be synchronized with audio and the refractive highlights of the Liquid Glass layer.29 This is particularly useful for gaming and immersive media, where the haptic response must feel like a natural extension of the visual environment.29
+Temporal UI: Live Activities and Dynamic Island
+The Dynamic Island and Live Activities continue to evolve in iOS 26, serving as the central hub for temporal information and ongoing system states.31 The design of these elements has been refined to incorporate Liquid Glass elements, such as the translucent FaceID tick animations and glassy airplay prompts.33
+Live Activity Scheduling and Expansion
+iOS 26 introduces a new developer API that allows all third-party applications to schedule Live Activities for the future.32 This was previously limited to system apps like Apple Sports. This capability opens up new use cases for premium apps, such as a workout app automatically starting a Live Activity when a pre-scheduled gym session begins, or a travel app triggering a boarding pass activity a set number of hours before a flight.32
+
+
+Platform
+	Live Activity Implementation in iOS 26
+	Functional Integration
+	iPhone
+	Dynamic Island (compact, minimal, expanded) and Lock Screen.31
+	Real-time flight tracking, food delivery, and workout metrics.32
+	CarPlay
+	Automatic integration into the CarPlay home screen.32
+	Keeps essential activity information visible while driving.24
+	iPad
+	Integrated with the new "Background Tasks" feature.32
+	Allows professionals to track intensive tasks like video exports from the background.32
+	Mac
+	Available in the menu bar as part of iPhone Mirroring.32
+	Extends the iPhone's temporal awareness to the desktop environment.32
+	The Dynamic Island itself has been optimized to handle multiple concurrent Live Activities more gracefully.31 In the "minimal" presentation, two activities can be displayed simultaneously—one attached to the main island and another detached as a separate circular element.31 This ensures that critical information, such as navigation directions and a music player, remain accessible at the same time.31
+Diagnostic Engineering: Optimizing for the Liquid Glass Era
+To support the increased complexity of the iOS 26 UI, Xcode 26 introduces a suite of performance and diagnostic tools designed to help developers identify and resolve bottlenecks in the rendering pipeline.35
+The SwiftUI Performance Instrument
+A key addition to the Xcode toolkit is the next-generation SwiftUI Performance Instrument.35 This tool tracks the duration of all updates performed by SwiftUI, allowing developers to identify "long updates" that might be causing hitched frames.35 The new "Cause & Effect Graph" is particularly valuable; it identifies exactly why a view body is running—whether due to a state change, a timer, or an environment update—making it easier to eliminate redundant work.35
+Bottleneck Analysis and Power Profiling
+The CPU Counters instrument has been reworked to support "Bottleneck Analysis," which categorizes CPU bandwidth into four categories: Useful, Instruction Delivery, Instruction Processing, and Discarded.35 This allows developers to understand whether their application is held back by the cost of instructions or by data that is not ready for processing, a critical distinction when optimizing the complex math required for Liquid Glass refraction.35
+The new "Power Profiler" instrument provides a real-time visualization of how an application impacts the power usage of different subsystems, including the CPU, GPU, and networking.35 Given that high-refresh refraction and AI-powered depth mapping are energy-intensive, the Power Profiler is an essential tool for developers aiming to deliver a high-end experience that does not compromise the user's battery life.35
+Case Studies: High-End Implementations of Liquid Glass
+The adoption of the iOS 26 design language by third-party developers provides early benchmarks for what constitutes a "high-end" app experience in this era.17
+Creative and Retail Excellence
+* Photoroom: Every action in this redesigned app leverages Liquid Glass. The team increased UI size and spacing and moved the tab bar to the bottom to allow the user to see more content behind the controls.17 This focus on comfortable tap targets and content visibility is a hallmark of premium design in iOS 26.17
+* American Airlines: The app utilizes a scroll edge effect in the header to allow more flight results to be visible while maintaining the legibility of the navigation UI.10 The adoption of concentric corner radii ensures that the interface feels "softer and friendlier," matching the hardware curvature of the latest iPhone models.10
+* Lowe’s: The brand utilizes Liquid Glass controls to let its familiar color scheme shine through the refractive layer.17 By moving the search experience to the tab bar, the app ensures that its core shopping functionality is globally available while providing more real estate for content.17
+Utility and Productivity Precision
+* CardPointers: This personal finance tool was redesigned with Liquid Glass and includes exclusive integration with Apple’s Foundation Models framework.17 The app uses on-device AI to answer questions about credit card offers, while its "AutoPilot" Live Activities appear seamlessly on CarPlay and the Dynamic Island.17
+* Sky Guide: This astronomy app shifted controls from the top toolbar to a Liquid Glass bottom bar, allowing the user to focus on the celestial bodies.17 Submenus were converted into floating popovers to improve the experience for stargazers, who now interact with a tactile, layered interface that reflects the ambient night sky.17
+* Slack: A new rounded "Compose" field introduced in iOS 26 fits better with the system keyboard, making it easier to write messages and upload images.17 The use of a "breakout" search tab—utilizing the new SwiftUI search role—allows the search interface to morph directly from the tab bar, maintaining spatial continuity as the user transitions from reading to searching.17
+Technical Synthesis: Implementation Guidelines for High-End Apps
+The analysis of the iOS 26 developer ecosystem reveals several critical implementation strategies for creating a premium, native experience.
+1. Prioritize Structural Layering: Use the NavigationSplitView and floating tab bars to establish a clear hierarchy where the navigation layer exists on a separate plane above the content.10
+2. Optimize for Apple Silicon: Utilize GlassEffectContainer and CAFrameRateRange to ensure that the refractive effects of Liquid Glass do not compromise performance. Developers should aim for a "120Hz-first" mindset for interactive elements.14
+3. Respect Accessibility Settings: Ensure that the application responds automatically to reduceTransparency and reduceMotion settings. A high-end app is one that is usable by all, providing simplified opaque fallback materials when necessary.9
+4. Leverage Generative Depth: Use the Spatial Scene API to add lifelike depth to images and the Fluid Time concepts to ensure that functional data complements, rather than obscures, user content.5
+The transition to iOS 26 and Liquid Glass represents a move toward an "ambient" computing style, where the interface is less like a series of buttons and more like a responsive, physical surface that reacts to light, depth, and touch.7 By mastering the new SwiftUI 7 primitives and adhering to the evolved motion design principles, developers can create applications that feel as polished and sophisticated as the hardware they run on, defining the standard for mobile interaction in 2026.
+Works cited
+1. iOS 26: Everything We Know | MacRumors, accessed on February 6, 2026, https://www.macrumors.com/roundup/ios-26/
+2. iOS 26 Guide: New features in the latest iPhone update and what's coming in iOS 26.3, accessed on February 6, 2026, https://www.macworld.com/article/2575705/ios-26-features-latest-update-release-date-beta.html
+3. WWDC 2025 : The Complete Guide to iOS 26 | by Mansi Prajapati | Simform Engineering, accessed on February 6, 2026, https://medium.com/simform-engineering/wwdc-2025-the-complete-guide-to-ios-26-45aaf8d1c5e5
+4. Why is it called iOS 26? What happened to iOS 19 for iPhone - 9to5Mac, accessed on February 6, 2026, https://9to5mac.com/2025/09/16/why-is-it-called-ios-26-what-happened-to-ios-19-for-iphone/
+5. New features available with iOS 26 - Apple, accessed on February 6, 2026, https://www.apple.com/os/pdf/All_New_Features_iOS_26_Sept_2025.pdf
+6. Apple WWDC 2025: iOS 26 confirmed | Mashable, accessed on February 6, 2026, https://mashable.com/article/apple-wwdc-2025-ios-26-confirmed-whats-new-looks-design
+7. Liquid Glass - Wikipedia, accessed on February 6, 2026, https://en.wikipedia.org/wiki/Liquid_Glass
+8. What's New - SwiftUI - Apple Developer, accessed on February 6, 2026, https://developer.apple.com/swiftui/whats-new/
+9. iOS 26 Liquid Glass: Comprehensive Swift/SwiftUI Reference - Medium, accessed on February 6, 2026, https://medium.com/@madebyluddy/overview-37b3685227aa
+10. Adopting Liquid Glass | Apple Developer Documentation, accessed on February 6, 2026, https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass
+11. Why Liquid Glass Might Be the Next iOS Design Trend and How To Build It Today - Medium, accessed on February 6, 2026, https://medium.com/write-a-catalyst/why-liquid-glass-might-be-the-next-ios-design-trend-and-how-to-build-it-today-e4599be06463
+12. Apple Liquid Glass design in iOS 26: Redesign your app icon - MobileAction, accessed on February 6, 2026, https://www.mobileaction.co/blog/apple-liquid-glass-design/
+13. Key Highlights of WWDC 2025 and iOS 26 Rumors - DEV Community, accessed on February 6, 2026, https://dev.to/aashika_mehra_eb91362ad65/key-highlights-of-wwdc-2025-and-ios-26-rumors-1f9p
+14. Android Perfetto Series 6: Why 120Hz? Advantages and Challenges, accessed on February 6, 2026, https://androidperformance.com/en/2025/04/26/Android-Perfetto-06-Why-120Hz/
+15. Applying Liquid Glass to custom views | Apple Developer Documentation, accessed on February 6, 2026, https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views
+16. Grouping Liquid Glass components using glassEffectUnion on iOS 26 - Donny Wals, accessed on February 6, 2026, https://www.donnywals.com/grouping-liquid-glass-components-using-glasseffectunion-on-ios-26/
+17. Discover how apps are using the new design and Liquid Glass ..., accessed on February 6, 2026, https://developer.apple.com/design/new-design-gallery/
+18. Presenting Liquid Glass sheets in SwiftUI on iOS 26 - Nil Coalescing, accessed on February 6, 2026, https://nilcoalescing.com/blog/PresentingLiquidGlassSheetsInSwiftUI
+19. iOS 26 Motion Design Guide: Key Principles and Practical Tips for ..., accessed on February 6, 2026, https://medium.com/@foks.wang/ios-26-motion-design-guide-key-principles-and-practical-tips-for-transition-animations-74def2edbf7c
+20. SwiftUI Animations in 2026: Master the Art of Fluid Motion Design | by Garejakirit - Medium, accessed on February 6, 2026, https://medium.com/@garejakirit/swiftui-animations-in-2026-master-the-art-of-fluid-motion-design-e5ec147da4b4
+21. iOS 26: Turn Photos Into 3D Spatial Scenes - MacRumors, accessed on February 6, 2026, https://www.macrumors.com/how-to/ios-3d-lock-screen-effect-spatial-scenes/
+22. How does iOS 26 Spatial scene work? : r/apple - Reddit, accessed on February 6, 2026, https://www.reddit.com/r/apple/comments/1nmosor/how_does_ios_26_spatial_scene_work/
+23. Spatial Photos on iOS and iPadOS 26 : r/SwiftUI - Reddit, accessed on February 6, 2026, https://www.reddit.com/r/SwiftUI/comments/1odir65/spatial_photos_on_ios_and_ipados_26/
+24. iOS 26: All the New Features We Expect - MacRumors, accessed on February 6, 2026, https://www.macrumors.com/2025/06/03/wwdc-2025-ios-26-rumors/
+25. What's new in SwiftUI | Documentation - WWDC Notes, accessed on February 6, 2026, https://wwdcnotes.com/documentation/wwdcnotes/wwdc25-256-whats-new-in-swiftui/
+26. artemnovichkov/iOS-26-by-Examples: A collection of hands ... - GitHub, accessed on February 6, 2026, https://github.com/artemnovichkov/iOS-26-by-Examples
+27. 173434 – Support for 120Hz requestAnimationFrame - WebKit Bugzilla, accessed on February 6, 2026, https://bugs.webkit.org/show_bug.cgi?id=173434
+28. Playing haptic feedback in your app | Apple Developer Documentation, accessed on February 6, 2026, https://developer.apple.com/documentation/applepencil/playing-haptic-feedback-in-your-app
+29. Haptic Feedback in iOS: A Comprehensive Guide | by Maksim Po - Medium, accessed on February 6, 2026, https://medium.com/@mi9nxi/haptic-feedback-in-ios-a-comprehensive-guide-6c491a5f22cb
+30. Introducing Core Haptics - WWDC19 - Videos - Apple Developer, accessed on February 6, 2026, https://developer.apple.com/la/videos/play/wwdc2019/520/
+31. Live Activities | Apple Developer Documentation, accessed on February 6, 2026, https://developer.apple.com/design/human-interface-guidelines/live-activities/
+32. iOS 26 made Live Activities even better on iPhone, here's what's new - 9to5Mac, accessed on February 6, 2026, https://9to5mac.com/2025/12/04/ios-26-made-live-activities-even-better-on-iphone-heres-whats-new/
+33. [iOS 26 DB1] Dynamic Island has little to no Liquid Glass redesign elements - Reddit, accessed on February 6, 2026, https://www.reddit.com/r/iOSBeta/comments/1l7q1rz/ios_26_db1_dynamic_island_has_little_to_no_liquid/
+34. Are Live Activities broken in iOS 26? : r/ios - Reddit, accessed on February 6, 2026, https://www.reddit.com/r/ios/comments/1nli3y3/are_live_activities_broken_in_ios_26/
+35. Xcode 26 Release Notes | Apple Developer Documentation, accessed on February 6, 2026, https://developer.apple.com/documentation/xcode-release-notes/xcode-26-release-notes
+36. Motion | Apple Developer Documentation, accessed on February 6, 2026, https://developer.apple.com/design/human-interface-guidelines/motion
+37. About visionOS 26 Updates - Apple Support (GW), accessed on February 6, 2026, https://support.apple.com/en-gw/123024

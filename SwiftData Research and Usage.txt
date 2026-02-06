@@ -1,0 +1,212 @@
+﻿The Synthesis of Persistent Logic: A Technical Audit of SwiftData Evolution and Implementation Protocols (2023-2026)
+The architecture of data persistence within the Apple ecosystem has undergone a transformative reconfiguration since the inception of SwiftData at WWDC 2023. This framework was designed not merely as a successor to Core Data but as a fundamental reimagining of how object graphs are managed, leveraging the modern safety and expressivity of the Swift language.1 As of early 2026, SwiftData has moved beyond its initial experimental phase into a sophisticated persistence engine that integrates deeply with Swift 6 concurrency, the Observation framework, and an evolving suite of cross-platform capabilities.3 This report provides an exhaustive technical analysis of SwiftData’s current state, examining its core components, the latest feature updates from the 2024 and 2025 development cycles, the mechanics of schema evolution, and the critical stability considerations that define its use in production environments.
+The Architectural Foundation of SwiftData
+SwiftData is structurally bifurcated into a declarative modeling layer and a transactional persistence engine. At the center of this system is the class-based model, which is transformed into a managed entity through the application of the @Model macro.2 This macro is more than a syntactic convenience; it synthesizes the necessary boilerplate for change tracking, relationship management, and persistence conformance.4 By adopting the PersistentModel and Observable protocols, these classes allow the framework to monitor mutations at a granular level, ensuring that the user interface remains synchronized with the underlying data store.6
+The operational lifecycle of these models is governed by two primary objects: the ModelContainer and the ModelContext. The ModelContainer functions as the bridge between the high-level Swift types and the physical storage medium, typically a SQLite database.6 It manages the schema versioning, the migration logic, and the physical configuration of the storage, such as whether it is persisted on disk or remains ephemeral in memory.6 In contrast, the ModelContext is the developer’s primary interface for data manipulation.7 It tracks the "dirty" state of objects, handles the insertion of new records, and manages the deletion of existing ones.7
+
+
+Component
+	Responsibility
+	Primary Interface
+	@Model
+	Schema definition and change tracking
+	Swift Class Annotation 4
+	ModelContainer
+	Persistent storage management and migration
+	Storage Backend 6
+	ModelContext
+	Transactional lifecycle and change tracking
+	Data Command Interface 7
+	PersistentIdentifier
+	Unique identification across contexts
+	Stable Identity Reference 7
+	The transition from the legacy Core Data NSManagedObjectContext to the ModelContext reflects a shift toward implicit management. While Core Data required explicit saving in many scenarios, SwiftData introduces autosave features that trigger on UI lifecycle events or timers, reducing the need for manual intervention.2 This behavior is designed to align with the declarative nature of SwiftUI, where the framework assumes responsibility for ensuring data consistency between the in-memory graph and the disk-based store.2
+Schema Refinement and Integrity Constraints: WWDC 2024 Updates
+The maturation of SwiftData in the 2024 development cycle focused on providing developers with finer control over data integrity and query performance. These updates addressed several initial limitations regarding how models could be indexed and constrained.12
+The Implementation of Advanced Indexing
+Performance optimization in data-heavy applications depends heavily on the efficiency of the underlying database queries. The introduction of the #Index macro allowed developers to define binary indices for specific model attributes or combinations thereof.10 This is particularly critical when using the Query() macro in SwiftUI views, as it enables the database to bypass full table scans when filtering or sorting large datasets.2 For instance, a "Trip" application might index the "name" and "startDate" properties to ensure that searches across thousands of entries remain responsive.10
+Compound Uniqueness Constraints
+Integrity is further bolstered by the #Unique macro, which expanded the framework’s ability to enforce constraints across multiple properties.12 Prior to this, uniqueness was often restricted to single attributes, which was insufficient for models that required a combination of fields to be unique, such as a "Flight" record being defined by a unique combination of "airlineCode," "flightNumber," and "departureDate".10 By utilizing #Unique, SwiftData can prevent the insertion of duplicate records at the database level, throwing errors during the save operation if a collision is detected.10
+
+
+Logic Type
+	Macro Used
+	Primary Benefit
+	Performance
+	#Index
+	Reduces query latency for filtered datasets 13
+	Integrity
+	#Unique
+	Prevents record duplication via compound keys 13
+	Customization
+	@Attribute
+	Specifies behavior like .unique or .ephemeral 4
+	Association
+	@Relationship
+	Manages link cardinality and delete rules 2
+	These constraints, while powerful, introduce complexities when integrated with CloudKit. Distributed systems face inherent challenges in enforcing global uniqueness across multiple devices simultaneously.15 Consequently, developers often face a trade-off: they can implement local uniqueness constraints for maximum integrity or opt for CloudKit synchronization, which currently discourages or prohibits the use of #Unique and @Attribute(.unique) to avoid sync conflicts.16
+Hierarchical Modeling and Inheritance: The WWDC 2025 Paradigm
+A significant evolution in SwiftData’s capabilities arrived with the 2025 updates, which introduced support for model inheritance.13 This feature allows for the creation of sophisticated class hierarchies that mirror real-world domain models more accurately than the previously flat structures.19
+Designing with IS-A Relationships
+Inheritance in SwiftData is predicated on the "IS-A" relationship principle. This allows a base class to define core properties—such as a "Trip" having a "name" and "duration"—while specialized subclasses like "BusinessTrip" and "PersonalTrip" add contextual fields like "perDiem" or "companionCount".17 This implementation is fully integrated with the SwiftData lifecycle; both the parent and child classes must be annotated with the @Model macro to participate in the persistent graph.20
+The query engine has been enhanced to handle these hierarchies through two distinct fetch strategies: deep queries and shallow queries.18 A deep query for the root "Trip" class will return all instances, including those specialized as business or personal trips.18 Conversely, a shallow query can target a specific leaf class to retrieve only those specialized records.19 This flexibility allows for the creation of general "overview" views and highly specific "detail" editors within the same application architecture.20
+History Tracking and Transaction Sorting
+Complementing the inheritance features, the 2025 cycle also refined the Persistent History API. The HistoryDescriptor was updated with a sortBy property, enabling developers to retrieve transaction logs in a specific chronological order.13 This is a vital tool for applications that implement custom synchronization logic, data auditing, or "undo/redo" functionality that goes beyond the basic undo manager provided by the framework.4 By sorting historical changes, an application can reliably reconstruct the state of the data at any point in time, ensuring that incremental updates are applied in the correct sequence.18
+The Concurrency Model: Swift 6 and Actor-Based Persistence
+One of the most profound shifts in the Apple developer ecosystem during the 2024-2026 period has been the introduction of full data-race safety in Swift 6.3 SwiftData was architected with these concurrency features in mind, utilizing the actor model to isolate database operations and prevent common multithreading pitfalls.1
+The Role of @ModelActor
+The @ModelActor macro is the cornerstone of SwiftData’s concurrent architecture.9 In traditional persistence frameworks, managing background contexts was fraught with peril, as objects could easily leak across thread boundaries.1 With @ModelActor, developers can define a dedicated actor that owns its own ModelContext and ModelContainer.16 This ensures that all data operations—fetches, inserts, and saves—are isolated to that actor, effectively eliminating data races at compile time.3
+A critical stability update was delivered in late 2025 to address a long-standing issue where mutations performed within a @ModelActor did not automatically trigger view updates in SwiftUI.16 This fix, which was notably made backward-compatible to iOS 17, restored the framework's promise of seamless data flow regardless of whether the change originated on the main thread or a background worker.22
+
+
+Concurrency Tool
+	Primary Function
+	Thread Safety
+	MainActor
+	UI-bound context and Query macro
+	Compile-time Isolation 6
+	@ModelActor
+	Background processing and ingestion
+	Exclusive Actor Isolation 16
+	Sendable
+	Defines types safe for cross-actor transfer
+	Thread-Safe Enforcement 16
+	PersistentIdentifier
+	Shared reference for objects between actors
+	Unique and Sendable 7
+	While the framework provides robust concurrency primitives, developers must still navigate the nuances of object identity. Because models themselves are not Sendable, the only safe way to transfer an object between actors is via its PersistentIdentifier.7 Upon receiving an identifier, the target actor must fetch the object from its own context to perform any modifications.7 This pattern ensures that each actor maintains its own consistent view of the object graph, preventing the stale-data issues that often plagued early adopters of Core Data.1
+CloudKit Synchronization and Conflict Resolution
+The integration of SwiftData with CloudKit offers an "automagic" synchronization path that allows user data to persist across iPhone, iPad, Mac, and Vision Pro devices.6 However, this convenience comes with stringent model design requirements that differ from purely local implementations.16
+Model Requirements for Cloud Sync
+To ensure compatibility between the local SQLite store and the remote CloudKit record store, SwiftData enforces several schema constraints.16 These are not mere suggestions but are required for the sync engine to function correctly.16
+
+
+Constraint
+	Technical Rationale
+	Optional Properties
+	CloudKit may deliver partial records during background sync 16
+	Default Values
+	Required for any non-optional property to ensure record validity 16
+	No Uniqueness
+	Global uniqueness enforcement is too costly for high-frequency sync 15
+	Optional Relationships
+	Prevents "Deny" rule conflicts when related records are synced out of order 16
+	The prohibition of uniqueness constraints in CloudKit-enabled apps is a frequent source of technical debt.15 Without these constraints, an app that receives data from multiple sources (e.g., an iPad and an iPhone) simultaneously may end up with duplicate records.15 Developers are often forced to implement manual deduplication logic by listening to persistent history change notifications and merging records based on a stable business key.15
+Performance and Synchronization Frequency
+It is critical to understand that SwiftData’s CloudKit integration is not a real-time database in the vein of Firebase or Firestore.16 Synchronization is an asynchronous process managed by the operating system, which throttles updates based on network conditions, battery levels, and system activity.16 Observations from the field suggest that SwiftData's sync behavior mirrors that of Apple's system apps like Notes or Reminders, where changes may take anywhere from a few seconds to several minutes to propagate across all devices.16
+Schema Evolution and the Migration Pipeline
+Applications are rarely static, and as features are added, the underlying data model must evolve.26 SwiftData provides a sophisticated migration framework that categorizes changes into lightweight and heavyweight paths.26
+Lightweight Migrations: The Automatic Path
+SwiftData can automatically infer migrations for changes that do not risk data loss or integrity violations.26 This is the preferred path for most incremental updates.28 Lightweight migration is triggered automatically when the ModelContainer detects a schema mismatch, provided the changes fall within the framework's "inferred" capabilities.6
+
+
+Supported Change
+	Description
+	Custom Logic Required
+	Add Optional Property
+	New field added with nil as default
+	No 26
+	Remove Property
+	Existing data for that field is discarded
+	No 26
+	Make Property Optional
+	Converting non-optional to optional
+	No 26
+	Rename Property
+	Map original stored name to new property name
+	No 26
+	Manual Migrations and VersionedSchema
+When a model change is structural—such as adding a non-optional property without a default value or splitting a single entity into two—a manual migration is required.26 This process is centered on the VersionedSchema protocol, which allows developers to define discrete, namespaced versions of their data models.26
+The developer must create a SchemaMigrationPlan that specifies the transition logic between these versions.6 This plan includes "migration stages," which can be either lightweight or custom.26 A custom stage allows the developer to execute arbitrary code—such as fetching old records, calculating new values, and re-inserting them into the new schema—before the migration is finalized.26
+A common pitfall in this process involves the lifecycle of default values. Many developers mistakenly assume that adding a default value to a Swift initializer is sufficient for a lightweight migration.26 However, Swift initializers only apply to newly created objects in memory; they do not retroactively populate existing rows in the SQLite database during a schema update.26 For these existing rows, a manual migration stage is often necessary to provide "backfill" data.26
+Interoperability: Coexisting with Core Data
+For established applications, the transition from Core Data to SwiftData is rarely an overnight process. Apple has designed a coexistence path that allows both frameworks to share the same underlying persistent store.10
+Shared Store Mechanics
+In a coexistence scenario, the application manages two separate persistence stacks: one for Core Data and one for SwiftData.10 Both stacks point to the same .sqlite file on disk.10 This allows developers to migrate their application entity-by-entity or even feature-by-feature.10 For example, a main application might continue using Core Data for complex reporting views while a new Home Screen widget uses SwiftData to fetch and display summary statistics.10
+To prevent runtime conflicts, developers must ensure that the entity names in the Core Data model match the class names (or the specified original names) in the SwiftData models.10 However, it is a recommended best practice to use different Swift class names for the two frameworks (e.g., CDTrip for Core Data and Trip for SwiftData) to avoid compiler ambiguity, while keeping the database table names synchronized.10
+The Migration Manager Pattern
+A robust coexistence strategy often requires a dedicated "Migration Manager" that handles housekeeping during the application launch sequence.29 This manager checks the application version at the last run against the current version and orchestrates any necessary data patching before the UI is presented to the user.29 This ensures that when a user upgrades their app, the underlying data is transformed to the new schema—whether that schema is defined in Core Data or SwiftData—before any read operations occur.29
+Custom Data Stores: The Future of Persistence
+The 2024 update introduced a revolutionary capability to SwiftData: the DataStore protocol.4 This API allows the framework to function as a front-end for virtually any persistence backend, moving beyond its historical reliance on SQLite.31
+Implementation of the DataStore Protocol
+Implementing a custom data store involves satisfying three key protocol requirements:
+* DataStoreConfiguration: This defines the metadata and settings for the store, such as the URL for a JSON file or the credentials for a web service.31
+* DataStoreSnapshot: This acts as the medium for transferring data between the storage backend and the ModelContext.31 It represents a "frozen" state of a model's properties at a given moment.31
+* DataStore Methods: The developer must implement the fetch and save methods, which translate SwiftData's requests into the specific operations required by the custom backend.31
+
+
+Backend Type
+	Advantage
+	Ideal Use Case
+	SQLite (Default)
+	High performance, transaction support
+	Primary app persistence 4
+	JSON / Plist
+	Human-readable, easy for debugging
+	Small configs or archival data 15
+	Protocol Buffers
+	Binary efficiency, cross-platform
+	High-speed data ingestion 32
+	Remote API
+	Seamless integration with web backends
+	Lightweight caching for web apps 4
+	The implications of this update are significant. It allows SwiftData to serve as a unified modeling layer for applications that may store some data in a local database and other data in a remote JSON-based cloud service.31 However, early reports from 2025 and 2026 suggest that implementing a custom data store is technically demanding and may introduce performance overhead if not carefully optimized.15 For instance, "translating" the complex graph-resolution logic of SwiftData to a flat JSON file can quickly become a bottleneck for large datasets.15
+Stability, Performance, and Known Issues (2025-2026)
+Despite its advanced feature set, SwiftData’s journey toward production readiness has been marked by stability concerns, particularly following the major underlying refactoring that accompanied the iOS 18 release cycle.23
+The iOS 18 Refactoring Impact
+In 2024, Apple performed a significant internal overhaul of SwiftData to decouple it from its strict Core Data dependencies and enable the multi-persistence features described above.23 While this was a strategic necessity, it resulted in a period of instability where code that ran perfectly on iOS 17 encountered crashes or data corruption on iOS 18.23 One of the most common issues reported was the "Never access a full future backing data" error, which typically occurred during complex deletion and re-insertion cycles.33 The solution identified by the community involves clearing old references and arrays immediately after a save operation to prevent the context from attempting to re-reference stale backing data.33
+Performance vs. Abstraction
+SwiftData’s high level of abstraction comes at a performance cost.16 Comparative benchmarks indicate that direct SQLite or Core Data interactions remain faster for massive batch operations.16 The Observation overhead, while convenient for UI synchronization, can add measurable latency when processing tens of thousands of records in a single transaction.2 To mitigate this, developers are advised to use the enumerate method on ModelContext for batch processing, which allows the framework to handle records in manageable chunks and reduces the memory footprint.7
+The Removal of Xcode Visualization Tools
+A controversial change noted by developers in the Xcode 26 beta (late 2025) was the removal of the data model graph view.17 For years, this visual representation was essential for understanding complex entity-relationship graphs in Core Data.17 Its removal suggests that Apple is pushing developers toward a "code-as-truth" philosophy, though it has increased the difficulty for developers inheriting large, complex projects who must now mentally reconstruct the schema from Swift files alone.17
+Architectural Best Practices: Navigating MVVM and SwiftData
+The integration of SwiftData into modern app architectures has sparked a significant debate regarding the role of the Model-View-ViewModel (MVVM) pattern.34 Because SwiftData’s @Query macro and environment-based ModelContext are so tightly integrated with SwiftUI views, some argue that the traditional ViewModel has become an unnecessary layer of boilerplate.2
+The Friction with MVVM
+The primary challenge in adopting MVVM with SwiftData lies in the initialization lifecycle.34 A ViewModel typically needs a reference to the ModelContext to perform operations, but this context is often provided by the SwiftUI environment, which is not available until the view’s body property is executed.34 Furthermore, instantiating a ViewModel as a @State property within a view can lead to reset issues during view hierarchy updates if the initializer is not carefully managed.34
+A consensus among senior engineers is that @Query should be viewed as a "read-only view" of the data rather than a business logic layer.34 Therefore, it is perfectly acceptable for SwiftUI views to use @Query directly for displaying data, while offloading complex mutations, network synchronization, and data processing to a dedicated ViewModel or a ModelActor that is injected into the view hierarchy.34 This hybrid approach preserves the "separation of concerns" while taking full advantage of the framework’s native optimizations.34
+Conclusion: The Strategic Outlook for SwiftData
+As of early 2026, SwiftData has successfully established itself as the modern standard for data persistence on Apple platforms.1 The introduction of compound uniqueness, model inheritance, and custom data stores has addressed most of the functional gaps that existed at its launch.12
+The strategic choice between SwiftData and Core Data now hinges on specific project requirements:
+* New SwiftUI-First Projects: SwiftData is the definitive choice, offering a clean, type-safe API that aligns with the future of the platform.1
+* Complex Legacy Applications: Core Data remains relevant for projects requiring fine-grained control over SQLite performance, sectioned fetch results for UIKit, or deep visualization of data graphs.17
+* Cross-Device Sync: While CloudKit integration is seamless, developers must be prepared to handle duplication issues manually due to the lack of uniqueness constraint support in synchronized stores.15
+The next frontier for SwiftData likely involves more robust integration with Apple’s Intelligence features and on-device Foundation Models, where the framework’s ability to efficiently index and query local data will become a critical component of personal context management.3 For the professional developer, mastering the nuances of @ModelActor and VersionedSchema is no longer optional; it is the foundation of building stable, scalable, and data-rich applications in the contemporary Swift ecosystem.
+Works cited
+1. SwiftData: Replacing Core Data with Modern Simplicity, accessed February 6, 2026, https://commitstudiogs.medium.com/swiftdata-replacing-core-data-with-modern-simplicity-aeba3c1f513e
+2. A Beginner's Ultimate Guide to SwiftData - CodeWithChris, accessed February 6, 2026, https://codewithchris.com/swift-data/
+3. WWDC 2024: Key Impacts Developers Need To Know - MacStadium, accessed February 6, 2026, https://macstadium.com/blog/wwdc-2024-developer-recap
+4. SwiftData | Apple Developer Documentation, accessed February 6, 2026, https://developer.apple.com/documentation/swiftdata
+5. Model() | Apple Developer Documentation, accessed February 6, 2026, https://developer.apple.com/documentation/swiftdata/model()
+6. ModelContainer | Apple Developer Documentation, accessed February 6, 2026, https://developer.apple.com/documentation/swiftdata/modelcontainer
+7. ModelContext | Apple Developer Documentation, accessed February 6, 2026, https://developer.apple.com/documentation/swiftdata/modelcontext
+8. The Art of SwiftData in 2025: From Scattered Pieces to a Masterpiece, accessed February 6, 2026, https://medium.com/@matgnt/the-art-of-swiftdata-in-2025-from-scattered-pieces-to-a-masterpiece-1fd0cefd8d87
+9. Don't use fields called `updated` in SwiftData. | by Alan MacGregor, accessed February 6, 2026, https://medium.com/@alanmacgregordev/dont-use-fields-called-updated-in-swiftdata-3e8575f81873
+10. Adopting SwiftData for a Core Data app | Apple Developer ..., accessed February 6, 2026, https://developer.apple.com/documentation/coredata/adopting-swiftdata-for-a-core-data-app
+11. How to get a SwiftData model container and context in SwiftUI, accessed February 6, 2026, https://tanaschita.com/20231030-swiftdata-swiftui/
+12. What's new in SwiftData | Documentation - WWDC Notes, accessed February 6, 2026, https://wwdcnotes.com/documentation/wwdcnotes/wwdc24-10137-whats-new-in-swiftdata/
+13. SwiftData updates | Apple Developer Documentation, accessed February 6, 2026, https://developer.apple.com/documentation/updates/swiftdata
+14. Adding and editing persistent data in your app - Apple Developer, accessed February 6, 2026, https://developer.apple.com/documentation/SwiftData/Adding-and-editing-persistent-data-in-your-app
+15. Consider implementing a SwiftData Custom Store (new in iOS18) for, accessed February 6, 2026, https://github.com/realm/realm-swift/issues/8627
+16. Key Considerations Before Using SwiftData - Fatbobman's Blog, accessed February 6, 2026, https://fatbobman.com/en/posts/key-considerations-before-using-swiftdata/
+17. SwiftData and Core Data at WWDC25 - Michael Tsai, accessed February 6, 2026, https://mjtsai.com/blog/2025/06/19/swiftdata-and-core-data-at-wwdc25/
+18. WWDC 2025 Viewing Guide - Use Your Loaf, accessed February 6, 2026, https://useyourloaf.com/blog/wwdc-2025-viewing-guide/
+19. WWDC 2025 - SwiftData iOS 26 - Class Inheritance & Migration, accessed February 6, 2026, https://dev.to/arshtechpro/wwdc-2025-swiftdata-ios-26-class-inheritance-migration-issues-30bh
+20. Adopting inheritance in SwiftData | Apple Developer Documentation, accessed February 6, 2026, https://developer.apple.com/documentation/SwiftData/Adopting-inheritance-in-SwiftData
+21. What's New in Swift, SwiftUI, and Xcode: WWDC 2024 Highlights, accessed February 6, 2026, https://dtundwal.medium.com/whats-new-in-swift-swiftui-and-xcode-wwdc-2024-highlights-c7dc8bd48dbf
+22. WWDC 2025 First Impressions - As Expected, Yet Unexpected, accessed February 6, 2026, https://fatbobman.com/en/posts/wwdc-2025-first-impressions/
+23. Blog - Returning to Core Data - Michael Tsai, accessed February 6, 2026, https://mjtsai.com/blog/2024/10/16/returning-to-core-data/
+24. Intro to SwiftData - Model, Container, Fetch, Create, Update & Delete, accessed February 6, 2026, https://www.youtube.com/watch?v=mvXFGikltPc
+25. SwiftData + CloudKit sync in production: Lessons from building a, accessed February 6, 2026, https://www.reddit.com/r/swift/comments/1mmdpiu/swiftdata_cloudkit_sync_in_production_lessons/
+26. A Deep Dive into SwiftData migrations – Donny Wals, accessed February 6, 2026, https://www.donnywals.com/a-deep-dive-into-swiftdata-migrations/
+27. Mastering Core Data Migration in Swift: A Complete Guide (2025), accessed February 6, 2026, https://medium.com/reversebits/mastering-core-data-migration-in-swift-a-complete-guide-2025-ec9633321b85
+28. Migrating a Data Model With Core Data - Cocoacasts, accessed February 6, 2026, https://cocoacasts.com/migrating-a-data-model-with-core-data
+29. Use CoreData alongside SwiftData for the "Sharing" feature in the app., accessed February 6, 2026, https://www.reddit.com/r/swift/comments/1haumhm/use_coredata_alongside_swiftdata_for_the_sharing/
+30. DataStore | Apple Developer Documentation, accessed February 6, 2026, https://developer.apple.com/documentation/swiftdata/datastore
+31. Create a custom data store with SwiftData - WWDC Notes, accessed February 6, 2026, https://wwdcnotes.com/documentation/wwdcnotes/wwdc24-10138-create-a-custom-data-store-with-swiftdata/
+32. SwiftData + ProtoBuf for Custom DataStore - Medium, accessed February 6, 2026, https://medium.com/@emilioarvonio/swiftdata-protobuf-for-custom-datastore-bfc65e9c1cf3
+33. SwiftData error on iOS 18, Never access a full future backing data, accessed February 6, 2026, https://stackoverflow.com/questions/78713871/swiftdata-error-on-ios-18-never-access-a-full-future-backing-data
+34. Is SwiftData incompatible with MVVM? The standard answer, accessed February 6, 2026, https://matteomanferdini.com/swiftdata-mvvm/
+35. Considering abandoning SwiftData in my production app - Reddit, accessed February 6, 2026, https://www.reddit.com/r/iOSProgramming/comments/1l0ybez/considering_abandoning_swiftdata_in_my_production/
+36. SwiftData vs. Core Data: Which Should You Choose in 2025?, accessed February 6, 2026, https://www.hashstudioz.com/blog/swiftdata-vs-core-data-which-should-you-choose-in-2025/
+37. I converted a Core Data to SwiftData: Here is what happened, accessed February 6, 2026, https://www.youtube.com/watch?v=RpdHOCMz9Pw
+38. The Most Valuable WWDC 2025 Sessions for iOS Engineers, accessed February 6, 2026, https://www.vladkhambir.com/posts/wwdc-2025/
