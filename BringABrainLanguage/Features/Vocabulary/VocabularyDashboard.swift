@@ -10,15 +10,24 @@ struct VocabularyDashboard: View {
     }
     
     var totalWordsCount: Int {
-        observer.vocabularyStats?.total ?? allWords.count
+        if let total = observer.vocabularyStats?.total {
+            return Int(total)
+        }
+        return allWords.count
     }
     
     var dueCount: Int {
-        observer.vocabularyStats?.dueCount ?? dueWords.count
+        if let due = observer.vocabularyStats?.dueCount {
+            return Int(due)
+        }
+        return dueWords.count
     }
     
     var masteredCount: Int {
-        observer.vocabularyStats?.masteredCount ?? allWords.filter { $0.masteryLevel >= 5 }.count
+        if let mastered = observer.vocabularyStats?.masteredCount {
+            return Int(mastered)
+        }
+        return allWords.filter { $0.masteryLevel >= 5 }.count
     }
     
     var body: some View {
