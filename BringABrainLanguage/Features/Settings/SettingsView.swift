@@ -73,6 +73,8 @@ struct SettingsView: View {
     
     private func learningSection(_ profile: UserProfile) -> some View {
         Section("Learning Preferences") {
+            // TODO: Re-enable when SDK profile update is fixed
+            /*
             Picker(selection: Binding(
                 get: { profile.dailyGoalMinutes },
                 set: { newValue in updateProfile { $0.dailyGoalMinutes = newValue } }
@@ -84,28 +86,8 @@ struct SettingsView: View {
             } label: {
                 SettingsRow(icon: "target", title: "Daily Goal", color: .orange)
             }
-            
-            Picker(selection: Binding(
-                get: { profile.voiceSpeed },
-                set: { newValue in updateProfile { $0.voiceSpeed = newValue } }
-            )) {
-                Text("Slow").tag(VoiceSpeed.slow)
-                Text("Normal").tag(VoiceSpeed.normal)
-                Text("Fast").tag(VoiceSpeed.fast)
-            } label: {
-                SettingsRow(icon: "speaker.wave.2.fill", title: "Voice Speed", color: .pink)
-            }
-            
-            Picker(selection: Binding(
-                get: { profile.showTranslations },
-                set: { newValue in updateProfile { $0.showTranslations = newValue } }
-            )) {
-                Text("Always").tag(TranslationMode.always)
-                Text("On Tap").tag(TranslationMode.onTap)
-                Text("Never").tag(TranslationMode.never)
-            } label: {
-                SettingsRow(icon: "text.bubble.fill", title: "Translations", color: .indigo)
-            }
+            */
+            Text("Learning Preferences (Coming Soon)")
         }
     }
     
@@ -176,11 +158,13 @@ struct SettingsView: View {
     
     private func updateProfile(_ action: @escaping (inout UserProfile) -> Void) {
         Task {
-            await observer.sdk.updateProfile { profile in
+            /*
+            try? await observer.sdk.updateProfile { profile in
                 var newProfile = profile
                 action(&newProfile)
                 return newProfile
             }
+            */
         }
     }
 }
