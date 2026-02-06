@@ -1,0 +1,15 @@
+{
+  "originHash" : "a29578adf5a6486f5d62e871c4fb8d9faa3ebeb976a082dc99e20e8699c58445",
+  "pins" : [
+    {
+      "identity" : "bab-language-kmp",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/etonealbert/bab-language-kmp.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "34d50a00eee974f006b9849cb3004531517b8932"
+      }
+    }
+  ],
+  "version" : 3
+}

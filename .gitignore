@@ -1,0 +1,44 @@
+# --- OS X ---
+.DS_Store
+
+# --- Xcode ---
+build/
+DerivedData/
+*.hmap
+*.ipa
+*.playground
+!*.playground/Contents.swift
+
+# --- User-specific Xcode settings (The most important part to ignore) ---
+# This prevents your personal window sizes and open tabs from being pushed to GitHub
+xcuserdata/
+*.xcuserstate
+*.xcworkspace/xcshareddata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+
+# --- Swift Package Manager ---
+.build/
+.swiftpm/
+Package.resolved
+
+# --- Fastlane & Tooling (If you use them later) ---
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# --- Security ---
+# Never commit your signing certificates or API keys
+*.p12
+*.cer
+*.mobileprovision
+.env
+
+# --- Secrets and Config ---
+# Ignore the file that contains real API keys
+Secrets.xcconfig
+
+# If you use Cocoapods (less common now, but just in case)
+Pods/
