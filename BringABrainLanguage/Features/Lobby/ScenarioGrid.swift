@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ScenarioGrid: View {
     @EnvironmentObject var observer: SDKObserver
-    @Namespace private var namespace
+    let namespace: Namespace.ID
     
     let columns = [
         GridItem(.adaptive(minimum: 160), spacing: 16)
@@ -11,28 +11,30 @@ struct ScenarioGrid: View {
     @State private var scenarios: [ScenarioDisplayData] = []
     
     var body: some View {
-        let list = scenarios
         ScrollView {
             LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(list, id: \.id) { scenario in
-                    Button {
-                        startGame(scenario: scenario)
-                    } label: {
-                        if scenario.isPremium {
-                            PremiumGate(isLocked: true) {
-                                ScenarioCard(scenario: scenario, namespace: namespace)
-                            }
-                        } else {
-                            ScenarioCard(scenario: scenario, namespace: namespace)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
+                scenarioCards
             }
             .padding()
         }
         .task {
             await loadScenarios()
+        }
+    }
+    
+    @ViewBuilder
+    private var scenarioCards: some View {
+        ForEach(scenarios, id: \.id) { (scenario: ScenarioDisplayData) in
+            NavigationLink(value: scenario) {
+                if scenario.isPremium {
+                    PremiumGate {
+                        ScenarioCard(scenario: scenario, namespace: namespace)
+                    }
+                } else {
+                    ScenarioCard(scenario: scenario, namespace: namespace)
+                }
+            }
+            .buttonStyle(.plain)
         }
     }
     
@@ -46,9 +48,5 @@ struct ScenarioGrid: View {
             ScenarioDisplayData(id: "4", name: "Grocery Store", description: "Find ingredients for dinner", difficulty: "A1", isPremium: false, imageName: "basket.fill"),
             ScenarioDisplayData(id: "5", name: "Emergency", description: "Call for help", difficulty: "C1", isPremium: true, imageName: "cross.case.fill")
         ]
-    }
-    
-    private func startGame(scenario: ScenarioDisplayData) {
-        observer.startSoloGame(scenarioId: scenario.id, roleId: "default")
     }
 }

@@ -1,17 +1,12 @@
-//
-//  BringABrainLanguageApp.swift
-//  BringABrainLanguage
-//
-//  Created by Whatsername on 06/02/2026.
-//
-
 import SwiftUI
 import SwiftData
+import BabLanguageSDK
 
 @main
 struct BringABrainLanguageApp: App {
     
     let modelContainer: ModelContainer
+    @StateObject private var sdkObserver: SDKObserver
     
     init() {
         do {
@@ -20,11 +15,15 @@ struct BringABrainLanguageApp: App {
                 schema: schema,
                 isStoredInMemoryOnly: false
             )
-            modelContainer = try ModelContainer(
+            let container = try ModelContainer(
                 for: schema,
                 migrationPlan: BabLanguageMigrationPlan.self,
                 configurations: [modelConfiguration]
             )
+            self.modelContainer = container
+            
+            let sdk = SDKFactory.createSDK(modelContext: container.mainContext)
+            _sdkObserver = StateObject(wrappedValue: SDKObserver(sdk: sdk))
         } catch {
             fatalError("Could not initialize ModelContainer: \(error)")
         }
@@ -33,6 +32,7 @@ struct BringABrainLanguageApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(sdkObserver)
         }
         .modelContainer(modelContainer)
     }

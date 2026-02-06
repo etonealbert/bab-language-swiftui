@@ -1,14 +1,5 @@
 import SwiftUI
 
-struct ScenarioDisplayData: Identifiable {
-    let id: String
-    let name: String
-    let description: String
-    let difficulty: String
-    let isPremium: Bool
-    let imageName: String
-}
-
 struct ScenarioCard: View {
     let scenario: ScenarioDisplayData
     let namespace: Namespace.ID

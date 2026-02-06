@@ -36,6 +36,11 @@ fastlane/test_output
 *.mobileprovision
 .env
 
+# Xcode user settings
+userdata/
+*.xcuserdatad
+*.xcuserstate
+
 # --- Secrets and Config ---
 # Ignore the file that contains real API keys
 Secrets.xcconfig
