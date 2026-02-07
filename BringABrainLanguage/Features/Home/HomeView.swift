@@ -1,20 +1,18 @@
 import SwiftUI
 
-enum PlayMode: String, Identifiable {
+enum PlayMode: String, Hashable, Codable {
     case solo
     case host
     case join
-    
-    var id: String { rawValue }
 }
 
 struct HomeView: View {
     @EnvironmentObject var observer: SDKObserver
-    @State private var selectedMode: PlayMode?
+    @State private var navigationPath = NavigationPath()
     @Namespace private var namespace
     
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: 20) {
                     ModeCard(
@@ -23,7 +21,7 @@ struct HomeView: View {
                         subtitle: "Practice on your own",
                         description: "AI plays all other roles"
                     ) {
-                        selectedMode = .solo
+                        navigationPath.append(PlayMode.solo)
                     }
                     
                     ModeCard(
@@ -32,7 +30,7 @@ struct HomeView: View {
                         subtitle: "Start a local game",
                         description: "Friends join via Bluetooth"
                     ) {
-                        selectedMode = .host
+                        navigationPath.append(PlayMode.host)
                     }
                     
                     ModeCard(
@@ -41,14 +39,17 @@ struct HomeView: View {
                         subtitle: "Scan for nearby hosts",
                         description: "Connect and play together"
                     ) {
-                        selectedMode = .join
+                        navigationPath.append(PlayMode.join)
                     }
                 }
                 .padding()
             }
             .navigationTitle("Choose Your Mode")
-            .navigationDestination(item: $selectedMode) { mode in
+            .navigationDestination(for: PlayMode.self) { mode in
                 destinationView(for: mode)
+            }
+            .navigationDestination(for: ScenarioDisplayData.self) { scenario in
+                TheaterView(scenarioId: scenario.id, namespace: namespace)
             }
         }
     }
