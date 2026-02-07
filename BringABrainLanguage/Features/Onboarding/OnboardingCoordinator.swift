@@ -127,6 +127,7 @@ struct WelcomeStepView: View {
 struct ProfileStepView: View {
     @Binding var displayName: String
     let onContinue: () -> Void
+    @FocusState private var isNameFieldFocused: Bool
     
     var body: some View {
         VStack(spacing: 24) {
@@ -134,9 +135,16 @@ struct ProfileStepView: View {
                 .font(.title2.bold())
             
             TextField("Your name", text: $displayName)
+                .focused($isNameFieldFocused)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal, 40)
                 .autocorrectionDisabled()
+                .submitLabel(.continue)
+                .onSubmit {
+                    if !displayName.isEmpty {
+                        onContinue()
+                    }
+                }
             
             Spacer()
             
@@ -148,6 +156,9 @@ struct ProfileStepView: View {
             .tint(.purple)
         }
         .padding()
+        .onTapGesture {
+            isNameFieldFocused = false
+        }
     }
 }
 

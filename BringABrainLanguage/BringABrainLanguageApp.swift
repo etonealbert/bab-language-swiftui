@@ -6,24 +6,27 @@ import BabLanguageSDK
 struct BringABrainLanguageApp: App {
     
     let modelContainer: ModelContainer
-    @StateObject private var sdkObserver: SDKObserver
+    @StateObject private var sdkObserver = SDKObserver(sdk: BrainSDK())
     
     init() {
+        let fileManager = FileManager.default
+        if let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            if !fileManager.fileExists(atPath: appSupportURL.path) {
+                try? fileManager.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
+            }
+        }
+        
         do {
             let schema = Schema(BabLanguageSchemaV1.models)
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: false
             )
-            let container = try ModelContainer(
+            modelContainer = try ModelContainer(
                 for: schema,
                 migrationPlan: BabLanguageMigrationPlan.self,
                 configurations: [modelConfiguration]
             )
-            self.modelContainer = container
-            
-            let sdk = SDKFactory.createSDK(modelContext: container.mainContext)
-            _sdkObserver = StateObject(wrappedValue: SDKObserver(sdk: sdk))
         } catch {
             fatalError("Could not initialize ModelContainer: \(error)")
         }
