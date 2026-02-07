@@ -23,6 +23,11 @@ final class SDKObserver: ObservableObject {
     @Published private(set) var currentAIResponse: String?
     @Published private(set) var isLLMInitialized: Bool = false
     
+    @Published var nativeDialogLines: [NativeDialogLine] = []
+    @Published var sessionInitState: SessionInitState = .idle
+    @Published private(set) var currentTheaterConfig: TheaterSessionConfig?
+    @Published private(set) var currentUserLineIndex: Int?
+    
     var llmAvailability: LLMAvailability {
         LLMBridge().checkAvailability()
     }
@@ -203,5 +208,140 @@ final class SDKObserver: ObservableObject {
     
     func requestHint(level: HintLevel = .starterWords) {
         sdk.requestHint(level: level)
+    }
+    
+    // MARK: - Native Theater Session (Foundation Models)
+    
+    func initializeTheaterSession(config: TheaterSessionConfig) async {
+        sessionInitState = .initializing
+        currentTheaterConfig = config
+        nativeDialogLines = []
+        currentUserLineIndex = nil
+        isSoloMode = true
+        
+        await llmManager.initialize(
+            targetLanguage: config.targetLanguage,
+            nativeLanguage: config.nativeLanguage,
+            scenario: config.scenarioTitle,
+            userRole: config.userRole,
+            aiRole: config.aiRole
+        )
+        
+        guard llmManager.isInitialized else {
+            sessionInitState = .error("Failed to initialize language model")
+            return
+        }
+        
+        isLLMInitialized = true
+        sessionInitState = .ready
+        
+        await generateNextExchange()
+    }
+    
+    func generateNextExchange() async {
+        guard isLLMInitialized, let config = currentTheaterConfig else { return }
+        
+        isGenerating = true
+        defer { isGenerating = false }
+        
+        let prompt = buildExchangePrompt(config: config)
+        
+        do {
+            let response = try await llmManager.generate(prompt: prompt)
+            let parsed = parseExchangeResponse(response, config: config)
+            
+            nativeDialogLines.append(parsed.aiLine)
+            nativeDialogLines.append(parsed.userLine)
+            currentUserLineIndex = nativeDialogLines.count - 1
+        } catch {
+            if nativeDialogLines.isEmpty {
+                sessionInitState = .error("Failed to generate dialog: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    func confirmUserLine() async {
+        currentUserLineIndex = nil
+        await generateNextExchange()
+    }
+    
+    func skipUserLine() {
+        currentUserLineIndex = nil
+    }
+    
+    func endTheaterSession() async {
+        await endSession()
+        nativeDialogLines = []
+        sessionInitState = .idle
+        currentTheaterConfig = nil
+        currentUserLineIndex = nil
+    }
+    
+    private func buildExchangePrompt(config: TheaterSessionConfig) -> String {
+        let previousContext: String
+        if nativeDialogLines.isEmpty {
+            previousContext = "This is the start of the conversation."
+        } else {
+            let recentLines = nativeDialogLines.suffix(6).map { line in
+                "\(line.role): \(line.text)"
+            }.joined(separator: "\n")
+            previousContext = "Previous conversation:\n\(recentLines)"
+        }
+        
+        return """
+        \(previousContext)
+        
+        Generate the next exchange. First provide your line as \(config.aiRole), then suggest what the user (\(config.userRole)) should say.
+        
+        Format your response exactly like this:
+        AI_LINE: [Your dialog in \(config.targetLanguage)]
+        AI_TRANSLATION: [Translation in \(config.nativeLanguage)]
+        USER_LINE: [Suggested user response in \(config.targetLanguage)]
+        USER_TRANSLATION: [Translation in \(config.nativeLanguage)]
+        """
+    }
+    
+    private func parseExchangeResponse(_ response: String, config: TheaterSessionConfig) -> (aiLine: NativeDialogLine, userLine: NativeDialogLine) {
+        var aiText = ""
+        var aiTranslation: String?
+        var userText = ""
+        var userTranslation: String?
+        
+        let lines = response.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("AI_LINE:") {
+                aiText = String(trimmed.dropFirst("AI_LINE:".count)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("AI_TRANSLATION:") {
+                aiTranslation = String(trimmed.dropFirst("AI_TRANSLATION:".count)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("USER_LINE:") {
+                userText = String(trimmed.dropFirst("USER_LINE:".count)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("USER_TRANSLATION:") {
+                userTranslation = String(trimmed.dropFirst("USER_TRANSLATION:".count)).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        
+        if aiText.isEmpty {
+            aiText = response.components(separatedBy: "USER_LINE:").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? response
+        }
+        if userText.isEmpty {
+            userText = "..."
+        }
+        
+        let aiLine = NativeDialogLine(
+            text: aiText,
+            translation: aiTranslation,
+            role: config.aiRole,
+            isUser: false
+        )
+        
+        let userLine = NativeDialogLine(
+            text: userText,
+            translation: userTranslation,
+            role: config.userRole,
+            isUser: true
+        )
+        
+        return (aiLine, userLine)
     }
 }
