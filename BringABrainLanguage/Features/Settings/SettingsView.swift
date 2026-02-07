@@ -22,6 +22,7 @@ struct SettingsView: View {
                 }
                 
                 notificationsSection
+                developerSection
                 shareSection
                 aboutSection
             }
@@ -102,6 +103,45 @@ struct SettingsView: View {
                     SettingsRow(icon: "clock.fill", title: "Time", color: .gray)
                 }
             }
+        }
+    }
+    
+    private var developerSection: some View {
+        Section("Developer") {
+            NavigationLink(destination: LLMTestView()) {
+                HStack {
+                    SettingsRow(
+                        icon: "brain.head.profile.fill",
+                        title: "LLM Test",
+                        color: .purple
+                    )
+                    Spacer()
+                    llmStatusBadge
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var llmStatusBadge: some View {
+        let availability = LLMBridge().checkAvailability()
+        switch availability {
+        case .available:
+            Text("Ready")
+                .font(.caption)
+                .foregroundColor(.green)
+        case .modelNotReady:
+            Text("Downloading")
+                .font(.caption)
+                .foregroundColor(.orange)
+        case .notSupported:
+            Text("Not Supported")
+                .font(.caption)
+                .foregroundColor(.red)
+        case .unknown:
+            Text("Unknown")
+                .font(.caption)
+                .foregroundColor(.gray)
         }
     }
     

@@ -2,84 +2,36 @@ import SwiftUI
 
 struct TheaterView: View {
     let scenarioId: String
+    let scenarioTitle: String
     let namespace: Namespace.ID
+    let config: TheaterSessionConfig
     
     @EnvironmentObject var observer: SDKObserver
     @Environment(\.dismiss) var dismiss
     
     @StateObject private var speechManager = SpeechManager()
-    @State private var dialogLines: [MockDialogLine] = []
-    @State private var currentUserLineIndex: Int?
     @State private var selectedWord: String?
     @State private var selectedWordIndex: Int?
     
     @AppStorage("micEnabled") private var micEnabled = true
     
-    struct MockDialogLine: Identifiable {
-        let id = UUID()
-        let text: String
-        let translation: String?
-        let role: String
-        let isUser: Bool
-    }
-    
     var body: some View {
-        VStack(spacing: 0) {
-            headerBar
-            
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 20) {
-                        Color.clear.frame(height: 20)
-                        
-                        ForEach(Array(dialogLines.enumerated()), id: \.element.id) { index, line in
-                            DialogBubble(
-                                text: line.text,
-                                translation: line.translation,
-                                roleName: line.role,
-                                isUser: line.isUser,
-                                highlightedWordCount: currentUserLineIndex == index ? speechManager.matchedWordCount : (line.isUser ? line.text.split(separator: " ").count : 0),
-                                onWordLongPress: { word, wordIndex in
-                                    selectedWord = word
-                                    selectedWordIndex = wordIndex
-                                }
-                            )
-                            .id(line.id)
-                        }
-                    }
-                    .padding()
-                }
-                .onChange(of: dialogLines.count) {
-                    if let last = dialogLines.last {
-                        withAnimation {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
-                }
-            }
-            
-            VStack(spacing: 16) {
-                DirectorToolbar(
-                    onHint: {
-                        addLine("Try asking about the dark roast.", translation: nil, role: "System", isUser: false)
-                    },
-                    onReplay: {},
-                    onEnd: { dismiss() }
-                )
+        ZStack {
+            VStack(spacing: 0) {
+                headerBar
                 
-                if let userLineIndex = currentUserLineIndex {
-                    VoiceInputBar(
-                        speechManager: speechManager,
-                        onConfirmTap: {
-                            confirmCurrentLine()
-                        },
-                        onSkip: {
-                            skipCurrentLine()
-                        }
-                    )
-                }
+                dialogContent
+                
+                bottomControls
             }
-            .background(.bar)
+            
+            if observer.sessionInitState.isLoading {
+                loadingOverlay
+            }
+            
+            if let errorMessage = observer.sessionInitState.errorMessage {
+                errorOverlay(message: errorMessage)
+            }
         }
         .navigationBarHidden(true)
         .navigationTransition(.zoom(sourceID: scenarioId, in: namespace))
@@ -105,29 +57,138 @@ struct TheaterView: View {
         }
         .onAppear {
             setupSpeechManager()
-            if dialogLines.isEmpty {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    addLine(
-                        "Buenos días! ¿Qué le puedo servir?",
-                        translation: "Good morning! What can I get for you?",
-                        role: "Barista",
-                        isUser: false
-                    )
+            startSession()
+        }
+        .onDisappear {
+            speechManager.stopListening()
+        }
+        .onChange(of: observer.currentUserLineIndex) { _, newIndex in
+            if let index = newIndex, micEnabled {
+                let line = observer.nativeDialogLines[index]
+                speechManager.startListening(expectedLine: line.text, language: languageCode(for: config.targetLanguage))
+            }
+        }
+    }
+    
+    private var dialogContent: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 20) {
+                    Color.clear.frame(height: 20)
                     
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        addUserLine(
-                            "Me gustaría un café con leche, por favor.",
-                            translation: "I would like a latte, please."
+                    ForEach(Array(observer.nativeDialogLines.enumerated()), id: \.element.id) { index, line in
+                        DialogBubble(
+                            text: line.text,
+                            translation: line.translation,
+                            roleName: line.role,
+                            isUser: line.isUser,
+                            highlightedWordCount: highlightedWordCount(for: index, line: line),
+                            onWordLongPress: { word, wordIndex in
+                                selectedWord = word
+                                selectedWordIndex = wordIndex
+                            }
                         )
+                        .id(line.id)
+                    }
+                    
+                    if observer.isGenerating {
+                        typingIndicator
+                    }
+                }
+                .padding()
+            }
+            .onChange(of: observer.nativeDialogLines.count) {
+                if let last = observer.nativeDialogLines.last {
+                    withAnimation {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: observer.isGenerating) { _, isGenerating in
+                if isGenerating {
+                    withAnimation {
+                        proxy.scrollTo("typingIndicator", anchor: .bottom)
                     }
                 }
             }
         }
     }
     
+    private var typingIndicator: some View {
+        HStack {
+            HStack(spacing: 4) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .fill(Color.secondary)
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(typingDotScale(index: index))
+                        .animation(
+                            .easeInOut(duration: 0.6)
+                            .repeatForever()
+                            .delay(Double(index) * 0.2),
+                            value: observer.isGenerating
+                        )
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(.systemGray5))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            
+            Spacer()
+        }
+        .id("typingIndicator")
+    }
+    
+    private func typingDotScale(index: Int) -> CGFloat {
+        observer.isGenerating ? 1.0 : 0.5
+    }
+    
+    private func highlightedWordCount(for index: Int, line: NativeDialogLine) -> Int {
+        if observer.currentUserLineIndex == index {
+            return speechManager.matchedWordCount
+        } else if line.isUser {
+            return line.text.split(separator: " ").count
+        }
+        return 0
+    }
+    
+    private var bottomControls: some View {
+        VStack(spacing: 16) {
+            DirectorToolbar(
+                onHint: {
+                    observer.requestHint()
+                },
+                onReplay: {},
+                onEnd: {
+                    Task {
+                        await observer.endTheaterSession()
+                    }
+                    dismiss()
+                }
+            )
+            
+            if observer.currentUserLineIndex != nil {
+                VoiceInputBar(
+                    speechManager: speechManager,
+                    onConfirmTap: {
+                        confirmCurrentLine()
+                    },
+                    onSkip: {
+                        skipCurrentLine()
+                    }
+                )
+            }
+        }
+        .background(.bar)
+    }
+    
     private var headerBar: some View {
         HStack {
             Button {
+                Task {
+                    await observer.endTheaterSession()
+                }
                 dismiss()
             } label: {
                 Image(systemName: "xmark")
@@ -140,8 +201,9 @@ struct TheaterView: View {
             
             Spacer()
             
-            Text("Scenario Active")
+            Text(scenarioTitle)
                 .font(.headline)
+                .lineLimit(1)
             
             Spacer()
             
@@ -151,52 +213,98 @@ struct TheaterView: View {
         .background(.bar)
     }
     
+    private var loadingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+                
+                Text("Preparing conversation...")
+                    .font(.headline)
+                    .foregroundColor(.white)
+            }
+            .padding(40)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+        }
+    }
+    
+    private func errorOverlay(message: String) -> some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 40))
+                    .foregroundColor(.orange)
+                
+                Text("Something went wrong")
+                    .font(.headline)
+                
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                
+                HStack(spacing: 16) {
+                    Button("Dismiss") {
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button("Retry") {
+                        startSession()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(30)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .padding(40)
+        }
+    }
+    
+    private func startSession() {
+        Task {
+            await observer.initializeTheaterSession(config: config)
+        }
+    }
+    
     private func setupSpeechManager() {
         speechManager.onAllWordsMatched = {
             confirmCurrentLine()
         }
     }
     
-    private func addLine(_ text: String, translation: String?, role: String, isUser: Bool) {
-        let newLine = MockDialogLine(text: text, translation: translation, role: role, isUser: isUser)
-        dialogLines.append(newLine)
-    }
-    
-    private func addUserLine(_ text: String, translation: String?) {
-        let newLine = MockDialogLine(text: text, translation: translation, role: "You", isUser: true)
-        dialogLines.append(newLine)
-        currentUserLineIndex = dialogLines.count - 1
-        
-        if micEnabled {
-            speechManager.startListening(expectedLine: text, language: "es-ES")
-        }
-    }
-    
     private func confirmCurrentLine() {
         speechManager.stopListening()
-        currentUserLineIndex = nil
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            addLine(
-                "¡Perfecto! Son cuatro con cincuenta.",
-                translation: "Perfect! That'll be four fifty.",
-                role: "Barista",
-                isUser: false
-            )
+        Task {
+            await observer.confirmUserLine()
         }
     }
     
     private func skipCurrentLine() {
         speechManager.stopListening()
-        currentUserLineIndex = nil
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            addLine(
-                "¿Algo más?",
-                translation: "Anything else?",
-                role: "Barista",
-                isUser: false
-            )
+        observer.skipUserLine()
+    }
+    
+    private func languageCode(for language: String) -> String {
+        switch language.lowercased() {
+        case "spanish", "es": return "es-ES"
+        case "french", "fr": return "fr-FR"
+        case "german", "de": return "de-DE"
+        case "italian", "it": return "it-IT"
+        case "portuguese", "pt": return "pt-BR"
+        case "japanese", "ja": return "ja-JP"
+        case "korean", "ko": return "ko-KR"
+        case "chinese", "zh": return "zh-CN"
+        default: return "en-US"
         }
     }
 }

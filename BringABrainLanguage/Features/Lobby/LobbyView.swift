@@ -13,7 +13,19 @@ struct LobbyView: View {
                     ScenarioGrid(namespace: namespace)
                         .navigationTitle("Scenarios")
                         .navigationDestination(for: ScenarioDisplayData.self) { scenario in
-                            TheaterView(scenarioId: scenario.id, namespace: namespace)
+                            TheaterView(
+                                scenarioId: scenario.id,
+                                scenarioTitle: scenario.name,
+                                namespace: namespace,
+                                config: TheaterSessionConfig(
+                                    scenarioId: scenario.id,
+                                    scenarioTitle: scenario.name,
+                                    targetLanguage: observer.userProfile?.currentTargetLanguage ?? "Spanish",
+                                    nativeLanguage: observer.userProfile?.nativeLanguage ?? "English",
+                                    userRole: scenario.userRole,
+                                    aiRole: scenario.aiRole
+                                )
+                            )
                         }
                 }
             }
