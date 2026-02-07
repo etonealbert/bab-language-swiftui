@@ -1,0 +1,257 @@
+# BringABrainLanguage iOS App - Project Rules
+
+## Project Overview
+
+iOS 18+ language learning app using BabLanguageSDK (Kotlin Multiplatform) for business logic and iOS 26 Foundation Models for on-device AI conversation in solo mode.
+
+**Tech Stack:**
+- SwiftUI (iOS 18+)
+- SwiftData for local persistence
+- BabLanguageSDK (KMP) for business logic
+- StoreKit 2 for subscriptions
+- Foundation Models (iOS 26+) for on-device LLM
+
+---
+
+## SDK Integration (BabLanguageSDK)
+
+### Initialization
+```swift
+let sdk = BrainSDK()  // Uses in-memory repositories by default
+```
+
+### SDKObserver Pattern
+The app uses `SDKObserver` as the bridge between SDK StateFlows and SwiftUI:
+- Injected via `.environmentObject(sdkObserver)` at app root
+- All views access via `@EnvironmentObject var observer: SDKObserver`
+- **CRITICAL**: SDKObserver MUST observe SDK StateFlows for UI to update
+
+### StateFlow Observation (REQUIRED)
+SDK state changes MUST be observed for UI reactivity:
+```swift
+private func observeSDKState() {
+    Task {
+        for await profile in sdk.userProfile {
+            await MainActor.run { self.userProfile = profile as? UserProfile }
+        }
+    }
+    Task {
+        for await state in sdk.state {
+            await MainActor.run { self.sessionState = state as? SessionState }
+        }
+    }
+}
+```
+
+### Key SDK Types
+| Type | Purpose |
+|------|---------|
+| `SessionState` | Current game state, dialog history, phase |
+| `UserProfile` | User preferences, languages, onboarding status |
+| `VocabularyStats` | Word counts, mastery levels |
+| `VocabularyEntry` | Individual word with SRS data |
+| `UserProgress` | XP, streaks, levels |
+| `DialogLine` | Single conversation line |
+| `SavedSession` | Completed session history |
+
+### SDK Method Naming Conventions
+- Repository protocols use labeled arguments: `saveProfile(profile:)`, `deleteSession(id:)`
+- SDK methods use Swift conventions: `startSoloGame(scenarioId:userRoleId:)`
+
+---
+
+## SwiftData Models (Local Persistence)
+
+### Model Prefix Convention
+All SwiftData models use `SD` prefix to distinguish from SDK types:
+- `SDUserProfile` (local) vs `UserProfile` (SDK)
+- `SDVocabularyEntry` (local) vs `VocabularyEntry` (SDK)
+
+### Property Naming (SwiftData)
+| Model | Property | NOT |
+|-------|----------|-----|
+| `SDUserProfile` | `nativeLanguage` | ~~nativeLanguageCode~~ |
+| `SDVocabularyEntry` | `language` | ~~languageCode~~ |
+| `SDVocabularyEntry` | `nextReviewAt` | ~~nextReviewDate~~ |
+| `SDVocabularyEntry` | `totalReviews` | ~~reviewCount~~ |
+| `SDUserProgress` | `totalSessions` | ~~sessionsCompleted~~ |
+
+### Schema
+- Current: `BabLanguageSchemaV1`
+- Migration plan: `BabLanguageMigrationPlan`
+
+### Directory Pre-Creation (REQUIRED)
+SwiftData's ModelContainer expects Application Support to exist:
+```swift
+let fileManager = FileManager.default
+if let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+    try? fileManager.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
+}
+```
+
+---
+
+## iOS Version Requirements
+
+| Feature | Minimum iOS |
+|---------|-------------|
+| SwiftData | iOS 17+ |
+| Zoom Transitions | iOS 18+ |
+| SF Symbols 6 effects | iOS 18+ |
+| scrollDismissesKeyboard | iOS 16+ |
+| @FocusState | iOS 15+ |
+| Foundation Models (LLM) | iOS 26+ |
+
+### Conditional Compilation
+```swift
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
+if #available(iOS 26.0, *) {
+    // Runtime check for Foundation Models
+}
+```
+
+---
+
+## Architecture
+
+```
+BringABrainLanguageApp
+├── Core/
+│   ├── Models/          # SwiftData models (SD* prefix)
+│   ├── Schema/          # SwiftData schema + migrations
+│   ├── SDKObserver.swift # StateFlow → @Published bridge
+│   └── LLMBridge/       # iOS 26 Foundation Models
+│       ├── LLMBridge.swift    # Low-level FM wrapper
+│       └── LLMManager.swift   # Singleton with memory handling
+├── Features/
+│   ├── Onboarding/      # Multi-step profile setup
+│   ├── Lobby/           # Scenario selection, dialog library
+│   ├── Theater/         # Active gameplay with animations
+│   ├── Vocabulary/      # SRS flashcard review
+│   ├── Paywall/         # StoreKit 2 subscriptions
+│   └── Settings/        # User preferences
+└── Shared/
+    ├── Components/      # Reusable UI (StatPill, etc.)
+    └── Extensions/      # View extensions
+```
+
+---
+
+## LLM Integration (iOS 26+)
+
+### Architecture
+```
+SDKObserver → LLMManager → LLMBridge → FoundationModels
+```
+
+### Solo Mode Flow
+1. `startSoloGameWithLLM()` → sets `isSoloMode = true`
+2. `initializeLLMForSoloMode()` → creates LLM session
+3. `generateWithLLM()` → generates AI response
+4. `endSession()` → resets LLM state
+
+### Memory Pressure Handling
+LLMManager automatically disposes session on memory warning and reinitializes on next use.
+
+---
+
+## UI Patterns
+
+### Keyboard Dismissal (REQUIRED)
+All TextFields MUST implement proper keyboard dismissal:
+```swift
+@FocusState private var isTextFieldFocused: Bool
+
+TextField("Input", text: $text)
+    .focused($isTextFieldFocused)
+    .submitLabel(.send)
+    .onSubmit { handleSubmit() }
+
+ScrollView { ... }
+    .scrollDismissesKeyboard(.interactively)
+
+VStack { ... }
+    .onTapGesture { isTextFieldFocused = false }
+```
+
+### Zoom Transitions (iOS 18+)
+```swift
+// Source (ScenarioCard)
+.matchedTransitionSource(id: scenario.id, in: namespace)
+
+// Destination (TheaterView)
+.navigationTransition(.zoom(sourceID: scenarioId, in: namespace))
+```
+
+### SF Symbols Effects
+- `.wiggle` - error/attention
+- `.bounce` - tap feedback
+- `.breathe` - ongoing activity
+- `.rotate` - loading/syncing
+
+---
+
+## Common Patterns
+
+### State Observation in Views
+```swift
+struct SomeView: View {
+    @EnvironmentObject var observer: SDKObserver
+    
+    var body: some View {
+        if let profile = observer.userProfile {
+            // Use profile
+        }
+    }
+}
+```
+
+### Async SDK Calls
+```swift
+Button("Complete") {
+    Task {
+        await observer.completeOnboarding(profile: profile)
+    }
+}
+```
+
+---
+
+## Testing
+
+### Test Commands
+```bash
+# Build
+xcodebuild -scheme BringABrainLanguage -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+
+# Run tests
+xcodebuild test -scheme BringABrainLanguage -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
+
+# Run specific test class
+xcodebuild test -scheme BringABrainLanguage -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -only-testing:BringABrainLanguageTests/LLMBridgeTests
+```
+
+### Foundation Models Testing
+**Cannot test on simulator** - requires iOS 26 device with Apple Silicon.
+
+---
+
+## Known Issues & Constraints
+
+1. **SDK Module Resolution**: LSP shows "No such module 'BabLanguageSDK'" but build succeeds
+2. **FoundationModels Availability**: Only iPhone 15 Pro+ / M-series iPad on iOS 26
+3. **SwiftData Directory**: Application Support must be pre-created to avoid sandbox warnings
+
+---
+
+## File Naming Conventions
+
+| Type | Prefix | Example |
+|------|--------|---------|
+| SwiftData Model | `SD` | `SDUserProfile.swift` |
+| Test File | None, suffix `Tests` | `LLMBridgeTests.swift` |
+| View | None | `TheaterView.swift` |
+| Manager/Service | None, suffix pattern | `LLMManager.swift` |

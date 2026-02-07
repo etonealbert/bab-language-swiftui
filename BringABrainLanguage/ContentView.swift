@@ -17,17 +17,17 @@ struct ContentView: View {
 struct MainTabView: View {
     var body: some View {
         TabView {
-            LobbyView()
+            HomeView()
                 .tabItem {
                     Label("Home", systemImage: "house.fill")
                 }
             
-            Text("Vocabulary")
+            VocabularyDashboard()
                 .tabItem {
                     Label("Vocabulary", systemImage: "book.fill")
                 }
             
-            Text("Settings")
+            SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gearshape.fill")
                 }
