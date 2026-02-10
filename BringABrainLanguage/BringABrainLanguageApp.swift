@@ -6,7 +6,7 @@ import BabLanguageSDK
 struct BringABrainLanguageApp: App {
     
     let modelContainer: ModelContainer
-    @StateObject private var sdkObserver = SDKObserver(sdk: BrainSDK())
+    @StateObject private var sdkObserver: SDKObserver
     
     init() {
         let fileManager = FileManager.default
@@ -16,13 +16,14 @@ struct BringABrainLanguageApp: App {
             }
         }
         
+        let container: ModelContainer
         do {
             let schema = Schema(BabLanguageSchemaV1.models)
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: false
             )
-            modelContainer = try ModelContainer(
+            container = try ModelContainer(
                 for: schema,
                 migrationPlan: BabLanguageMigrationPlan.self,
                 configurations: [modelConfiguration]
@@ -30,6 +31,18 @@ struct BringABrainLanguageApp: App {
         } catch {
             fatalError("Could not initialize ModelContainer: \(error)")
         }
+        self.modelContainer = container
+        
+        let swiftDataUserProfileRepo = SwiftDataUserProfileRepository(modelContainer: container)
+        let swiftDataRepo = SwiftDataUserProfileRepository(modelContainer: modelContainer)
+                
+        // 3. Initialize SDK with the Bridge
+        // This uses the new constructor you added in v1.0.7
+        let sdk = BrainSDK(userProfileRepository: swiftDataRepo)
+        
+        // 4. Initialize the UI Observer
+        self._sdkObserver = StateObject(wrappedValue: SDKObserver(sdk: sdk))
+        
     }
     
     var body: some Scene {

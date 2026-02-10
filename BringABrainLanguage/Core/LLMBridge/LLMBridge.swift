@@ -30,31 +30,44 @@ enum LLMBridgeError: Error, LocalizedError {
 
 final class LLMBridge {
     
+    private var sessionStorage: Any?
+    
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
-    private var session: LanguageModelSession?
+    private var session: LanguageModelSession? {
+        get { sessionStorage as? LanguageModelSession }
+        set { sessionStorage = newValue }
+    }
     #endif
     
     private var isInitialized = false
     private var currentSystemPrompt: String = ""
     
     func checkAvailability() -> LLMAvailability {
+        // 1. Check if the Framework exists at all
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let availability = SystemLanguageModel.default.availability
-            switch availability {
-            case .available:
-                return .available
-            case .unavailable(.deviceNotSupported):
+            print("DEBUG: FoundationModels framework IS imported.")
+            
+            // 2. Check if the OS version is correct
+            if #available(iOS 26.0, *) {
+                let availability = SystemLanguageModel.default.availability
+                print("DEBUG: OS version OK. Model Availability: \(availability)")
+                
+                switch availability {
+                case .available: return .available
+                // Note: The correct enum case per documentation is .deviceNotEligible
+                case .unavailable(.deviceNotEligible): return .notSupported
+                case .unavailable(.modelNotReady): return .modelNotReady
+                default: return .unknown
+                }
+            } else {
+                print("DEBUG: iOS 26 is NOT available (Wrong OS version).")
                 return .notSupported
-            case .unavailable(.modelNotReady):
-                return .modelNotReady
-            default:
-                return .unknown
             }
-        }
+        #else
+            print("DEBUG: FoundationModels framework could NOT be imported. Check Xcode version.")
+            return .notSupported
         #endif
-        return .notSupported
     }
     
     func initialize(systemPrompt: String) async -> Bool {
@@ -171,8 +184,9 @@ final class LLMBridge {
         currentSystemPrompt = ""
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            session = nil
+            sessionStorage = nil
         }
         #endif
     }
 }
+

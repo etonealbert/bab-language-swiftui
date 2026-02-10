@@ -59,7 +59,9 @@ class FoundationModelTranslationProvider: ObservableObject {
             context: context
         )
         
-        return try await session.respond(to: prompt, generating: TranslationResponse.self)
+        let response = try await session.respond(to: prompt, generating: TranslationResponse.self)
+        
+        return response.content
     }
     
     private func buildTranslationPrompt(
