@@ -13,6 +13,7 @@ final class SDUserProfile {
     var onboardingCompleted: Bool = false
     var createdAt: Date = Date()
     var lastActiveAt: Date = Date()
+    var isPremium: Bool = false
     var interestsJSON: String = "[]"
     var learningGoalsJSON: String = "[]"
     

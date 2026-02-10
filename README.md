@@ -15,16 +15,17 @@ A collaborative language learning iOS app where players practice conversations t
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        SwiftUI Views                             │
-│  OnboardingFlow │ HomeView │ TheaterView │ VocabularyDashboard   │
+│  OnboardingFlow │ HomeView │ TheaterView │ ChatHistoryView       │
 ├─────────────────────────────────────────────────────────────────┤
-│                        SDKObserver                               │
-│  @Published sessionState │ nativeDialogLines │ isGenerating      │
+│                     SDKObserver + ModelContext                    │
+│  @Published sessionState │ currentSessionId │ isGenerating       │
 ├─────────────────────────────────────────────────────────────────┤
-│         BrainSDK (KMP)           │      LLMBridge (Native)       │
-│  Game logic, vocabulary, sync    │  Foundation Models wrapper    │
+│  BrainSDK (KMP)  │ LLMBridge (Native) │ SwiftData (Persistence) │
+│  Game logic, sync │ Foundation Models  │ Conversations, Profile  │
 ├─────────────────────────────────────────────────────────────────┤
 │    SwiftData Repositories          │    LLMManager               │
-│  (UserProfile, Vocabulary, etc.)   │  Session + memory handling  │
+│  (UserProfile, Vocabulary,         │  Session + memory handling  │
+│   ConversationSession/Message)     │                             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -33,7 +34,7 @@ A collaborative language learning iOS app where players practice conversations t
 1. **Headless SDK Architecture** - Game logic lives in `BabLanguageSDK` (Kotlin Multiplatform)
 2. **Native LLM Integration** - Foundation Models accessed directly via Swift for solo mode
 3. **SwiftUI-First** - Modern declarative UI with iOS 18+ animations
-4. **Local-First** - Offline capable with optional cloud sync for premium
+4. **Local-First** - Offline capable with optional cloud sync for premium (SDK-managed)
 
 ## Project Structure
 
@@ -58,6 +59,7 @@ BringABrainLanguage/
 │   │   └── FoundationModelTranslationProvider.swift  # iOS 26 translation
 │   ├── Models/
 │   │   ├── NativeDialogLine.swift         # Dialog models for native LLM
+│   │   ├── ConversationModels.swift       # SDConversationSession + SDConversationMessage
 │   │   ├── SDUserProfile.swift
 │   │   ├── SDVocabularyEntry.swift
 │   │   └── ...
@@ -83,6 +85,8 @@ BringABrainLanguage/
 │   │   ├── InteractiveTextView.swift      # Word-by-word highlighting
 │   │   ├── WordDetailPopover.swift        # Long-press word translation
 │   │   └── DirectorToolbar.swift          # Hint, Replay, End buttons
+│   ├── History/
+│   │   └── ChatHistoryView.swift          # Persistent session history (@Query, all users)
 │   ├── Vocabulary/
 │   │   ├── VocabularyDashboard.swift
 │   │   └── ...
@@ -108,7 +112,7 @@ App Launch → Onboarding (if needed) → PaywallView (soft gate)
                                             ↓
                                       MainTabView
                     ┌───────────────────────┼───────────────────────┐
-                  Home                  Vocabulary              Settings
+                  Home              Vocabulary   History        Settings
                     │                                               │
             ┌───────┼───────┐                               LLM Test (Dev)
           Solo    Host    Join
@@ -127,12 +131,23 @@ App Launch → Onboarding (if needed) → PaywallView (soft gate)
 ### Theater Dialog Flow (Solo Mode)
 
 1. User selects scenario → TheaterView opens with loading overlay
-2. LLM session initializes with scenario context (roles, languages)
+2. `SDConversationSession` created in SwiftData, LLM session initializes
 3. AI generates first exchange: AI line + suggested user line
-4. User speaks the suggested line (word-by-word green highlighting)
-5. Auto-advance when 80%+ words matched, or tap to confirm
-6. LLM generates next exchange with typing indicator
-7. Repeat until session ends
+4. Messages written to `SDConversationMessage` in SwiftData
+5. TheaterMessageList (inner view) uses sorted relationship — UI auto-updates
+6. User speaks the suggested line (word-by-word green highlighting)
+7. Auto-advance when all words matched, or tap to confirm
+8. Skip button also auto-advances (calls `generateNextExchange()`)
+9. LLM generates next exchange with typing indicator
+10. Repeat until user ends session
+
+### End Session Flow
+
+1. User taps "X" close button or "End" in DirectorToolbar
+2. Custom overlay appears: "End Session?" with Save/Discard/Cancel
+3. **Save & Exit**: Marks `SDConversationSession.isComplete = true`, calculates duration, ends session
+4. **Discard**: Deletes `SDConversationSession` from SwiftData, ends session
+5. **Cancel**: Hides overlay, continues session
 
 ### Voice Input (No Typing)
 
@@ -141,7 +156,7 @@ Users practice speaking, not composing:
 2. Line appears with translation visible
 3. User speaks the line (real-time word matching)
 4. Auto-advance when all words matched
-5. Skip button as fallback
+5. Skip button auto-advances to next exchange (generates new dialog)
 
 ### Word Translation
 
@@ -164,6 +179,8 @@ On-device AI using Apple's Foundation Models framework:
 - `LLMBridge` wraps `LanguageModelSession` for text generation
 - `LLMManager` handles session lifecycle and memory pressure
 - Structured prompts generate AI line + suggested user line
+- Parser uses first-match strategy to handle multi-turn LLM hallucinations
+- Prompt includes strict single-exchange constraint rules
 
 **Translation:**
 - `@Generable` structured output for word translations
@@ -190,31 +207,42 @@ xcodebuild test -scheme BringABrainLanguage \
 
 ## SDK Integration
 
-The app uses `BabLanguageSDK` (Kotlin Multiplatform) for game logic, with native Swift for LLM:
+The app uses `BabLanguageSDK` v1.0.8 (Kotlin Multiplatform) for game logic, with native Swift for LLM and SwiftData for conversation persistence:
 
 ```swift
 @MainActor
 class SDKObserver: ObservableObject {
     let sdk: BrainSDK
+    let modelContext: ModelContext
     private let llmManager = LLMManager.shared
     
-    @Published var nativeDialogLines: [NativeDialogLine] = []
     @Published var sessionInitState: SessionInitState = .idle
     @Published var isGenerating: Bool = false
+    @Published private(set) var currentSessionId: String?
+    @Published private(set) var currentUserLineId: String?
     
     func initializeTheaterSession(config: TheaterSessionConfig) async {
-        sessionInitState = .initializing
-        await llmManager.initialize(...)
-        sessionInitState = .ready
-        await generateNextExchange()
+        // Creates SDConversationSession in SwiftData
+        // Initializes LLM, generates first exchange
     }
     
     func generateNextExchange() async {
         isGenerating = true
         let response = try await llmManager.generate(prompt: ...)
-        // Parse AI line + user line from response
-        nativeDialogLines.append(...)
+        let parsed = parseExchangeResponse(response, config: ...)
+        // Writes SDConversationMessage to SwiftData (not @Published arrays)
+        // TheaterView's @Query auto-updates UI
         isGenerating = false
+    }
+    
+    func skipUserLine() async {
+        currentUserLineId = nil
+        await generateNextExchange()  // Auto-advance on skip
+    }
+    
+    func endTheaterSession(save: Bool) async {
+        // save=true: marks session complete with duration
+        // save=false: deletes session from SwiftData
     }
 }
 ```

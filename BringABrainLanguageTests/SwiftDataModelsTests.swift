@@ -151,4 +151,68 @@ struct SwiftDataModelsTests {
         #expect(session.dialogLines.count == 1)
         #expect(session.dialogLines.first?.textNative == "Un café, por favor")
     }
+    
+    // MARK: - SDUserProfile isPremium Tests
+    
+    @Test func userProfileIsPremiumDefaultsFalse() {
+        let profile = SDUserProfile()
+        
+        #expect(profile.isPremium == false)
+    }
+    
+    @Test func userProfileIsPremiumCanBeSet() {
+        let profile = SDUserProfile()
+        profile.isPremium = true
+        
+        #expect(profile.isPremium == true)
+    }
+    
+    // MARK: - SDConversationSession Tests
+    
+    @Test func conversationSessionCanBeInstantiated() {
+        let session = SDConversationSession(
+            scenarioTitle: "Ordering Coffee",
+            targetLanguage: "es",
+            nativeLanguage: "en"
+        )
+        
+        #expect(session.id != "")
+        #expect(session.scenarioTitle == "Ordering Coffee")
+        #expect(session.targetLanguage == "es")
+        #expect(session.nativeLanguage == "en")
+        #expect(session.durationMinutes == 0)
+        #expect(session.isComplete == false)
+        #expect(session.messages.isEmpty)
+    }
+    
+    // MARK: - SDConversationMessage Tests
+    
+    @Test func conversationMessageCanBeInstantiated() {
+        let message = SDConversationMessage(
+            text: "Hola, buenos dias",
+            translation: "Hello, good morning",
+            role: "Barista",
+            isUser: false,
+            sessionId: "test-session"
+        )
+        
+        #expect(message.id != "")
+        #expect(message.text == "Hola, buenos dias")
+        #expect(message.translation == "Hello, good morning")
+        #expect(message.role == "Barista")
+        #expect(message.isUser == false)
+        #expect(message.sessionId == "test-session")
+    }
+    
+    @Test func conversationMessageUserLine() {
+        let message = SDConversationMessage(
+            text: "Un cafe con leche",
+            role: "Customer",
+            isUser: true,
+            sessionId: "test-session"
+        )
+        
+        #expect(message.isUser == true)
+        #expect(message.translation == nil)
+    }
 }

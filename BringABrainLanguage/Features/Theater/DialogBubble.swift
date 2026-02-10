@@ -8,6 +8,8 @@ struct DialogBubble: View {
     let highlightedWordCount: Int
     let onWordLongPress: ((String, Int) -> Void)?
     
+    @State private var isVisible = false
+    
     init(
         text: String,
         translation: String? = nil,
@@ -26,7 +28,7 @@ struct DialogBubble: View {
     
     struct AnimationValues {
         var scale = 0.8
-        var opacity = 0.0
+        var opacity = 0.0 // Starts invisible
         var verticalOffset = 20.0
     }
     
@@ -35,7 +37,8 @@ struct DialogBubble: View {
     }
     
     var body: some View {
-        KeyframeAnimator(initialValue: AnimationValues(), trigger: true) { values in
+        // 2. FIX: Use 'isVisible' as trigger
+        KeyframeAnimator(initialValue: AnimationValues(), trigger: isVisible) { values in
             HStack(alignment: .bottom, spacing: 12) {
                 if isUser { Spacer() }
                 
@@ -58,26 +61,16 @@ struct DialogBubble: View {
                     }
                     .padding(12)
                     .background(
-                        isUser 
-                            ? AnyShapeStyle(.blue.gradient) 
+                        isUser
+                            ? AnyShapeStyle(.blue.gradient)
                             : AnyShapeStyle(.thinMaterial)
                     )
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 20, 
-                            style: .continuous
-                        )
-                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
                             .strokeBorder(.white.opacity(0.2), lineWidth: 1)
                     )
-                    .shadow(
-                        color: .black.opacity(0.05),
-                        radius: 5,
-                        x: 0,
-                        y: 2
-                    )
+                    .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
                 }
                 
                 if !isUser { Spacer() }
@@ -100,12 +93,19 @@ struct DialogBubble: View {
                 SpringKeyframe(0.0, duration: 0.15)
             }
         }
+        .onAppear {
+            // 3. FIX: Trigger the animation when the view appears
+            isVisible = true
+        }
     }
     
     @ViewBuilder
     private var interactiveText: some View {
         if onWordLongPress != nil {
-            HStack(spacing: 4) {
+            // 4. FIX: Use FlowLayout (iOS 16+) or WrappingHStack logic
+            // Standard HStack puts everything on one line.
+            // This is a simple native Flow Layout implementation:
+            FlowLayout(spacing: 4) {
                 ForEach(Array(words.enumerated()), id: \.offset) { index, word in
                     Text(word)
                         .font(.body)
@@ -131,23 +131,59 @@ struct DialogBubble: View {
     }
 }
 
-#Preview {
-    VStack {
-        DialogBubble(
-            text: "¡Hola! ¿Cómo puedo ayudarte hoy?",
-            translation: "Hello! How can I help you today?",
-            roleName: "Barista",
-            isUser: false,
-            highlightedWordCount: 2
-        )
-        DialogBubble(
-            text: "Me gustaría un café con leche, por favor.",
-            translation: "I would like a latte, please.",
-            roleName: "You",
-            isUser: true,
-            highlightedWordCount: 4
-        )
+// Add this Helper for Text Wrapping (Native iOS 16+ Style)
+struct FlowLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrangeSubviews(proposal: proposal, subviews: subviews)
+        return rows.last?.maxY ?? .zero
     }
-    .padding()
-    .background(Color.gray.opacity(0.1))
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = arrangeSubviews(proposal: proposal, subviews: subviews)
+        for row in rows {
+            for element in row.elements {
+                element.subview.place(at: CGPoint(x: bounds.minX + element.x, y: bounds.minY + row.y), proposal: proposal)
+            }
+        }
+    }
+    
+    struct Row {
+        var elements: [Element] = []
+        var y: CGFloat = 0
+        var height: CGFloat = 0
+        var maxY: CGSize { CGSize(width: 0, height: y + height) }
+    }
+    
+    struct Element {
+        var subview: LayoutSubview
+        var x: CGFloat
+    }
+    
+    func arrangeSubviews(proposal: ProposedViewSize, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var currentRow = Row()
+        var x: CGFloat = 0
+        let maxWidth = proposal.width ?? .infinity
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth && !currentRow.elements.isEmpty {
+                currentRow.y = rows.last?.maxY.height ?? 0
+                rows.append(currentRow)
+                currentRow = Row()
+                x = 0
+            }
+            currentRow.elements.append(Element(subview: subview, x: x))
+            currentRow.height = max(currentRow.height, size.height)
+            x += size.width + spacing
+        }
+        if !currentRow.elements.isEmpty {
+            currentRow.y = rows.last?.maxY.height ?? 0
+            rows.append(currentRow)
+        }
+        
+        return rows
+    }
 }

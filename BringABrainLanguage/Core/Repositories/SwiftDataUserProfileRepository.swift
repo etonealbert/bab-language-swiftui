@@ -99,6 +99,7 @@ class SwiftDataUserProfileRepository: UserProfileRepository {
             dailyGoalMinutes: Int32(sd.dailyGoalMinutes),
             voiceSpeed: mapToVoiceSpeed(sd.voiceSpeed),
             showTranslations: mapToTranslationMode(sd.showTranslations),
+            isPremium: sd.isPremium,
             onboardingCompleted: sd.onboardingCompleted,
             createdAt: Int64(sd.createdAt.timeIntervalSince1970 * 1000),
             lastActiveAt: Int64(sd.lastActiveAt.timeIntervalSince1970 * 1000)
@@ -114,6 +115,7 @@ class SwiftDataUserProfileRepository: UserProfileRepository {
         profile.dailyGoalMinutes = Int(kmp.dailyGoalMinutes)
         profile.voiceSpeed = kmp.voiceSpeed.name
         profile.showTranslations = kmp.showTranslations.name
+        profile.isPremium = kmp.isPremium
         profile.onboardingCompleted = kmp.onboardingCompleted
         profile.createdAt = Date(timeIntervalSince1970: Double(kmp.createdAt) / 1000.0)
         profile.lastActiveAt = Date(timeIntervalSince1970: Double(kmp.lastActiveAt) / 1000.0)
@@ -147,6 +149,7 @@ class SwiftDataUserProfileRepository: UserProfileRepository {
         existing.dailyGoalMinutes = Int(kmp.dailyGoalMinutes)
         existing.voiceSpeed = kmp.voiceSpeed.name
         existing.showTranslations = kmp.showTranslations.name
+        existing.isPremium = kmp.isPremium
         existing.onboardingCompleted = kmp.onboardingCompleted
         existing.lastActiveAt = Date(timeIntervalSince1970: Double(kmp.lastActiveAt) / 1000.0)
         

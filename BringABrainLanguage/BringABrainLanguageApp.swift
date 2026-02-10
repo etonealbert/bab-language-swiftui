@@ -18,7 +18,7 @@ struct BringABrainLanguageApp: App {
         
         let container: ModelContainer
         do {
-            let schema = Schema(BabLanguageSchemaV1.models)
+            let schema = Schema(BabLanguageSchemaV2.models)
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: false
@@ -33,16 +33,12 @@ struct BringABrainLanguageApp: App {
         }
         self.modelContainer = container
         
-        let swiftDataUserProfileRepo = SwiftDataUserProfileRepository(modelContainer: container)
-        let swiftDataRepo = SwiftDataUserProfileRepository(modelContainer: modelContainer)
-                
-        // 3. Initialize SDK with the Bridge
-        // This uses the new constructor you added in v1.0.7
+        let swiftDataRepo = SwiftDataUserProfileRepository(modelContainer: container)
         let sdk = BrainSDK(userProfileRepository: swiftDataRepo)
         
-        // 4. Initialize the UI Observer
-        self._sdkObserver = StateObject(wrappedValue: SDKObserver(sdk: sdk))
-        
+        self._sdkObserver = StateObject(
+            wrappedValue: SDKObserver(sdk: sdk, modelContext: container.mainContext)
+        )
     }
     
     var body: some Scene {

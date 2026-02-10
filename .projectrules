@@ -22,9 +22,12 @@ let sdk = BrainSDK()  // Uses in-memory repositories by default
 
 ### SDKObserver Pattern
 The app uses `SDKObserver` as the bridge between SDK StateFlows and SwiftUI:
+- Accepts `ModelContext` at init for SwiftData writes
 - Injected via `.environmentObject(sdkObserver)` at app root
 - All views access via `@EnvironmentObject var observer: SDKObserver`
 - **CRITICAL**: SDKObserver MUST observe SDK StateFlows for UI to update
+- **CRITICAL**: Dialog data flows through SwiftData (`@Query`), NOT `@Published` arrays
+- Syncs `isPremium` from `SubscriptionManager` → `SDUserProfile` → SDK via `NotificationCenter`
 
 ### StateFlow Observation (REQUIRED)
 SDK state changes MUST be observed for UI reactivity:
@@ -47,12 +50,13 @@ private func observeSDKState() {
 | Type | Purpose |
 |------|---------|
 | `SessionState` | Current game state, dialog history, phase |
-| `UserProfile` | User preferences, languages, onboarding status |
+| `UserProfile` | User preferences, languages, onboarding status, `isPremium` (v1.0.8+) |
 | `VocabularyStats` | Word counts, mastery levels |
 | `VocabularyEntry` | Individual word with SRS data |
 | `UserProgress` | XP, streaks, levels |
 | `DialogLine` | Single conversation line |
 | `SavedSession` | Completed session history |
+| `HistorySession` | SDK v1.0.8 history model (in-memory, premium users get server sync) |
 
 ### SDK Method Naming Conventions
 - Repository protocols use labeled arguments: `saveProfile(profile:)`, `deleteSession(id:)`
@@ -66,19 +70,23 @@ private func observeSDKState() {
 All SwiftData models use `SD` prefix to distinguish from SDK types:
 - `SDUserProfile` (local) vs `UserProfile` (SDK)
 - `SDVocabularyEntry` (local) vs `VocabularyEntry` (SDK)
+- `SDConversationSession` / `SDConversationMessage` — native conversation persistence
 
 ### Property Naming (SwiftData)
 | Model | Property | NOT |
 |-------|----------|-----|
 | `SDUserProfile` | `nativeLanguage` | ~~nativeLanguageCode~~ |
+| `SDUserProfile` | `isPremium` | (new in v1.0.8 sync) |
 | `SDVocabularyEntry` | `language` | ~~languageCode~~ |
 | `SDVocabularyEntry` | `nextReviewAt` | ~~nextReviewDate~~ |
 | `SDVocabularyEntry` | `totalReviews` | ~~reviewCount~~ |
 | `SDUserProgress` | `totalSessions` | ~~sessionsCompleted~~ |
+| `SDConversationMessage` | `sessionId` | Denormalized for `@Query` filtering |
 
 ### Schema
-- Current: `BabLanguageSchemaV1`
-- Migration plan: `BabLanguageMigrationPlan`
+- Current: `BabLanguageSchemaV2` (adds `SDConversationSession`, `SDConversationMessage`, `isPremium`)
+- Previous: `BabLanguageSchemaV1`
+- Migration: `BabLanguageMigrationPlan` with lightweight V1→V2 stage
 
 ### Directory Pre-Creation (REQUIRED)
 SwiftData's ModelContainer expects Application Support to exist:
@@ -121,15 +129,18 @@ if #available(iOS 26.0, *) {
 BringABrainLanguageApp
 ├── Core/
 │   ├── Models/          # SwiftData models (SD* prefix)
-│   ├── Schema/          # SwiftData schema + migrations
-│   ├── SDKObserver.swift # StateFlow → @Published bridge
+│   │   ├── ConversationModels.swift  # SDConversationSession + SDConversationMessage
+│   │   └── ...
+│   ├── Schema/          # SwiftData schema V2 + migrations
+│   ├── SDKObserver.swift # StateFlow bridge + SwiftData writes + LLM orchestration
 │   └── LLMBridge/       # iOS 26 Foundation Models
 │       ├── LLMBridge.swift    # Low-level FM wrapper
 │       └── LLMManager.swift   # Singleton with memory handling
 ├── Features/
 │   ├── Onboarding/      # Multi-step profile setup
 │   ├── Lobby/           # Scenario selection, dialog library
-│   ├── Theater/         # Active gameplay with animations
+│   ├── Theater/         # Active gameplay (SwiftData @Query for messages)
+│   ├── History/         # Persistent chat history (@Query, all users)
 │   ├── Vocabulary/      # SRS flashcard review
 │   ├── Paywall/         # StoreKit 2 subscriptions
 │   └── Settings/        # User preferences
@@ -147,11 +158,32 @@ BringABrainLanguageApp
 SDKObserver → LLMManager → LLMBridge → FoundationModels
 ```
 
-### Solo Mode Flow
-1. `startSoloGameWithLLM()` → sets `isSoloMode = true`
-2. `initializeLLMForSoloMode()` → creates LLM session
-3. `generateWithLLM()` → generates AI response
-4. `endSession()` → resets LLM state
+### Solo Mode Flow (SwiftData-Backed)
+1. `initializeTheaterSession(config:)` → creates `SDConversationSession` in SwiftData, stores `currentSessionId`
+2. LLM initializes via `LLMManager`
+3. `generateNextExchange()` → generates text, writes `SDConversationMessage` to SwiftData
+4. TheaterView's inner `TheaterMessageList` uses `@Query` filtered by `sessionId` — UI auto-updates
+5. `confirmUserLine()` / `skipUserLine()` → both call `generateNextExchange()` for auto-advance
+6. `endTheaterSession(save:)` → marks session complete (save=true) or deletes it (save=false)
+
+### TheaterView Inner-View Pattern
+SwiftUI `@Query` cannot use runtime-dynamic predicates from `@EnvironmentObject`.
+The solution is a child view that accepts `sessionId` at init:
+```swift
+private struct TheaterMessageList: View {
+    let session: SDConversationSession
+    var sortedMessages: [SDConversationMessage] {
+        session.messages.sorted { $0.timestamp < $1.timestamp }
+    }
+    // ...ForEach(sortedMessages) { message in ... }
+}
+```
+
+### LLM Response Parsing Rules
+- Parser uses first-match strategy with `foundAI`/`foundUser` boolean flags
+- Strips Markdown formatting (`**`, `*`) from markers before matching
+- Stops parsing after finding first complete AI_LINE + USER_LINE pair
+- Prompt includes strict single-exchange constraints to prevent multi-turn hallucination
 
 ### Memory Pressure Handling
 LLMManager automatically disposes session on memory warning and reinitializes on next use.
@@ -191,6 +223,18 @@ VStack { ... }
 - `.bounce` - tap feedback
 - `.breathe` - ongoing activity
 - `.rotate` - loading/syncing
+
+### Custom Overlay Pattern (TheaterView)
+Confirmation dialogs use ZStack overlays (not system `.alert()`):
+```swift
+@State private var showEndSessionAlert = false
+
+// In body ZStack:
+if showEndSessionAlert {
+    endSessionOverlay  // Dimmed bg + centered card + action buttons
+}
+```
+Style: `Color.black.opacity(0.4)` background, `.regularMaterial` card, `RoundedRectangle(cornerRadius: 20)` clip.
 
 ---
 
@@ -244,6 +288,7 @@ xcodebuild test -scheme BringABrainLanguage -destination 'platform=iOS Simulator
 1. **SDK Module Resolution**: LSP shows "No such module 'BabLanguageSDK'" but build succeeds
 2. **FoundationModels Availability**: Only iPhone 15 Pro+ / M-series iPad on iOS 26
 3. **SwiftData Directory**: Application Support must be pre-created to avoid sandbox warnings
+4. **LSP macOS Mismatch**: LSP may report iOS-only APIs as unavailable (e.g., `.insetGrouped`) — build succeeds on iOS target
 
 ---
 

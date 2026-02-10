@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct TheaterView: View {
     let scenarioId: String
@@ -8,19 +9,36 @@ struct TheaterView: View {
     
     @EnvironmentObject var observer: SDKObserver
     @Environment(\.dismiss) var dismiss
+    @Query private var sessions: [SDConversationSession]
     
     @StateObject private var speechManager = SpeechManager()
     @State private var selectedWord: String?
     @State private var selectedWordIndex: Int?
+    @State private var showEndSessionAlert = false
     
     @AppStorage("micEnabled") private var micEnabled = true
+    
+    private var activeSession: SDConversationSession? {
+            sessions.first { $0.id == observer.currentSessionId }
+        }
     
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
                 headerBar
                 
-                dialogContent
+                if let session = activeSession {
+                    TheaterMessageList(
+                        session: session,
+                        isGenerating: observer.isGenerating,
+                        currentUserLineId: observer.currentUserLineId,
+                        speechMatchedWordCount: speechManager.matchedWordCount,
+                        onWordLongPress: { word, index in
+                            selectedWord = word
+                            selectedWordIndex = index
+                        }
+                    )
+                }
                 
                 bottomControls
             }
@@ -31,6 +49,10 @@ struct TheaterView: View {
             
             if let errorMessage = observer.sessionInitState.errorMessage {
                 errorOverlay(message: errorMessage)
+            }
+            
+            if showEndSessionAlert {
+                endSessionOverlay
             }
         }
         .navigationBarHidden(true)
@@ -62,95 +84,18 @@ struct TheaterView: View {
         .onDisappear {
             speechManager.stopListening()
         }
-        .onChange(of: observer.currentUserLineIndex) { _, newIndex in
-            if let index = newIndex, micEnabled {
-                let line = observer.nativeDialogLines[index]
-                speechManager.startListening(expectedLine: line.text, language: languageCode(for: config.targetLanguage))
+        .onChange(of: observer.currentUserLineId) { _, newId in
+            guard let messageId = newId, micEnabled else { return }
+            let descriptor = FetchDescriptor<SDConversationMessage>(
+                predicate: #Predicate { $0.id == messageId }
+            )
+            if let message = try? observer.modelContext.fetch(descriptor).first {
+                speechManager.startListening(
+                    expectedLine: message.text,
+                    language: languageCode(for: config.targetLanguage)
+                )
             }
         }
-    }
-    
-    private var dialogContent: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 20) {
-                    Color.clear.frame(height: 20)
-                    
-                    ForEach(Array(observer.nativeDialogLines.enumerated()), id: \.element.id) { index, line in
-                        DialogBubble(
-                            text: line.text,
-                            translation: line.translation,
-                            roleName: line.role,
-                            isUser: line.isUser,
-                            highlightedWordCount: highlightedWordCount(for: index, line: line),
-                            onWordLongPress: { word, wordIndex in
-                                selectedWord = word
-                                selectedWordIndex = wordIndex
-                            }
-                        )
-                        .id(line.id)
-                    }
-                    
-                    if observer.isGenerating {
-                        typingIndicator
-                    }
-                }
-                .padding()
-            }
-            .onChange(of: observer.nativeDialogLines.count) {
-                if let last = observer.nativeDialogLines.last {
-                    withAnimation {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
-            }
-            .onChange(of: observer.isGenerating) { _, isGenerating in
-                if isGenerating {
-                    withAnimation {
-                        proxy.scrollTo("typingIndicator", anchor: .bottom)
-                    }
-                }
-            }
-        }
-    }
-    
-    private var typingIndicator: some View {
-        HStack {
-            HStack(spacing: 4) {
-                ForEach(0..<3) { index in
-                    Circle()
-                        .fill(Color.secondary)
-                        .frame(width: 8, height: 8)
-                        .scaleEffect(typingDotScale(index: index))
-                        .animation(
-                            .easeInOut(duration: 0.6)
-                            .repeatForever()
-                            .delay(Double(index) * 0.2),
-                            value: observer.isGenerating
-                        )
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color(.systemGray5))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            
-            Spacer()
-        }
-        .id("typingIndicator")
-    }
-    
-    private func typingDotScale(index: Int) -> CGFloat {
-        observer.isGenerating ? 1.0 : 0.5
-    }
-    
-    private func highlightedWordCount(for index: Int, line: NativeDialogLine) -> Int {
-        if observer.currentUserLineIndex == index {
-            return speechManager.matchedWordCount
-        } else if line.isUser {
-            return line.text.split(separator: " ").count
-        }
-        return 0
     }
     
     private var bottomControls: some View {
@@ -161,14 +106,11 @@ struct TheaterView: View {
                 },
                 onReplay: {},
                 onEnd: {
-                    Task {
-                        await observer.endTheaterSession()
-                    }
-                    dismiss()
+                    showEndSessionAlert = true
                 }
             )
             
-            if observer.currentUserLineIndex != nil {
+            if observer.currentUserLineId != nil {
                 VoiceInputBar(
                     speechManager: speechManager,
                     onConfirmTap: {
@@ -186,10 +128,7 @@ struct TheaterView: View {
     private var headerBar: some View {
         HStack {
             Button {
-                Task {
-                    await observer.endTheaterSession()
-                }
-                dismiss()
+                showEndSessionAlert = true
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 16, weight: .bold))
@@ -291,9 +230,83 @@ struct TheaterView: View {
     
     private func skipCurrentLine() {
         speechManager.stopListening()
-        observer.skipUserLine()
+        Task {
+            await observer.skipUserLine()
+        }
     }
     
+    private var endSessionOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    showEndSessionAlert = false
+                }
+            
+            VStack(spacing: 24) {
+                VStack(spacing: 8) {
+                    Image(systemName: "theatermask.and.paintbrush")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.blue)
+                    
+                    Text("End Session?")
+                        .font(.title2.bold())
+                    
+                    Text("Do you want to save this conversation to your history?")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                
+                VStack(spacing: 12) {
+                    Button {
+                        Task {
+                            await observer.endTheaterSession(save: true)
+                        }
+                        dismiss()
+                    } label: {
+                        Text("Save & Exit")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                    
+                    Button(role: .destructive) {
+                        Task {
+                            await observer.endTheaterSession(save: false)
+                        }
+                        dismiss()
+                    } label: {
+                        Text("Discard")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    
+                    Button {
+                        showEndSessionAlert = false
+                    } label: {
+                        Text("Cancel")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            .padding(28)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
+            .padding(.horizontal, 40)
+        }
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.2), value: showEndSessionAlert)
+    }
+
     private func languageCode(for language: String) -> String {
         switch language.lowercased() {
         case "spanish", "es": return "es-ES"
@@ -306,5 +319,113 @@ struct TheaterView: View {
         case "chinese", "zh": return "zh-CN"
         default: return "en-US"
         }
+    }
+}
+
+// MARK: - Inner View (SwiftData @Query for messages)
+
+private struct TheaterMessageList: View {
+    let session: SDConversationSession
+    
+    let isGenerating: Bool
+    let currentUserLineId: String?
+    let speechMatchedWordCount: Int
+    let onWordLongPress: (String, Int) -> Void
+    
+    var sortedMessages: [SDConversationMessage] {
+            session.messages.sorted { $0.timestamp < $1.timestamp }
+        }
+    init(
+            session: SDConversationSession,
+            isGenerating: Bool,
+            currentUserLineId: String?,
+            speechMatchedWordCount: Int,
+            onWordLongPress: @escaping (String, Int) -> Void
+        ) {
+            self.session = session
+            self.isGenerating = isGenerating
+            self.currentUserLineId = currentUserLineId
+            self.speechMatchedWordCount = speechMatchedWordCount
+            self.onWordLongPress = onWordLongPress
+        }
+    
+    
+    
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 20) {
+                    Color.clear.frame(height: 20)
+                    
+                    ForEach(sortedMessages) { message in
+                        DialogBubble(
+                            text: message.text,
+                            translation: message.translation,
+                            roleName: message.role,
+                            isUser: message.isUser,
+                            highlightedWordCount: highlightedWordCount(for: message),
+                            onWordLongPress: { word, wordIndex in
+                                onWordLongPress(word, wordIndex)
+                            }
+                        )
+                        .id(message.id)
+                    }
+                    
+                    if isGenerating {
+                        typingIndicator
+                    }
+                }
+                .padding()
+            }
+            .onChange(of: sortedMessages.count) {
+                if let last = sortedMessages.last {
+                    withAnimation {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: isGenerating) { _, generating in
+                if generating {
+                    withAnimation {
+                        proxy.scrollTo("typingIndicator", anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var typingIndicator: some View {
+        HStack {
+            HStack(spacing: 4) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .fill(Color.secondary)
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(isGenerating ? 1.0 : 0.5)
+                        .animation(
+                            .easeInOut(duration: 0.6)
+                            .repeatForever()
+                            .delay(Double(index) * 0.2),
+                            value: isGenerating
+                        )
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(.systemGray5))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            
+            Spacer()
+        }
+        .id("typingIndicator")
+    }
+    
+    private func highlightedWordCount(for message: SDConversationMessage) -> Int {
+        if message.id == currentUserLineId {
+            return speechMatchedWordCount
+        } else if message.isUser {
+            return message.text.split(separator: " ").count
+        }
+        return 0
     }
 }

@@ -79,6 +79,7 @@ struct OnboardingCoordinator: View {
                 dailyGoalMinutes: Int32(dailyGoalMinutes),
                 voiceSpeed: .normal,
                 showTranslations: .onTap,
+                isPremium: false,
                 onboardingCompleted: true,
                 createdAt: now,
                 lastActiveAt: now

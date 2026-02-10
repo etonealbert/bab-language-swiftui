@@ -27,6 +27,11 @@ struct MainTabView: View {
                     Label("Vocabulary", systemImage: "book.fill")
                 }
             
+            ChatHistoryView()
+                .tabItem {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                }
+            
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gearshape.fill")

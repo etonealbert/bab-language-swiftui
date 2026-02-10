@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import BabLanguageSDK
 
 @MainActor
@@ -6,6 +7,7 @@ final class SDKObserver: ObservableObject {
     
     let sdk: BrainSDK
     private let llmManager = LLMManager.shared
+    let modelContext: ModelContext
     private var observationTasks: [Task<Void, Never>] = []
     
     @Published var sessionState: SessionState?
@@ -23,10 +25,12 @@ final class SDKObserver: ObservableObject {
     @Published private(set) var currentAIResponse: String?
     @Published private(set) var isLLMInitialized: Bool = false
     
-    @Published var nativeDialogLines: [NativeDialogLine] = []
     @Published var sessionInitState: SessionInitState = .idle
     @Published private(set) var currentTheaterConfig: TheaterSessionConfig?
-    @Published private(set) var currentUserLineIndex: Int?
+    @Published private(set) var currentUserLineId: String?
+    @Published private(set) var currentSessionId: String?
+    
+    private var sessionStartDate: Date?
     
     var llmAvailability: LLMAvailability {
         LLMBridge().checkAvailability()
@@ -46,8 +50,9 @@ final class SDKObserver: ObservableObject {
         return state.pendingVote != nil
     }
     
-    init(sdk: BrainSDK) {
+    init(sdk: BrainSDK, modelContext: ModelContext) {
         self.sdk = sdk
+        self.modelContext = modelContext
         self.sessionState = sdk.state.value as? SessionState
         self.userProfile = sdk.userProfile.value as? UserProfile
         self.vocabularyStats = sdk.vocabularyStats.value as? VocabularyStats
@@ -58,45 +63,73 @@ final class SDKObserver: ObservableObject {
     private func startObserving() {
         observationTasks.append(Task {
             for await state in sdk.state {
-                self.sessionState = state
+                await MainActor.run { self.sessionState = state }
             }
         })
         
         observationTasks.append(Task {
             for await profile in sdk.userProfile {
-                self.userProfile = profile
+                await MainActor.run { self.userProfile = profile }
             }
         })
         
         observationTasks.append(Task {
             for await stats in sdk.vocabularyStats {
-                self.vocabularyStats = stats
+                await MainActor.run { self.vocabularyStats = stats }
             }
         })
         
         observationTasks.append(Task {
             for await userProgress in sdk.progress {
-                self.progress = userProgress
+                await MainActor.run { self.progress = userProgress }
             }
         })
         
-        // TODO: Enable when SDK exposes dialogHistory StateFlow
-        // observationTasks.append(Task {
-        //     for await history in sdk.dialogHistory {
-        //         self.dialogHistory = history
-        //     }
-        // })
-        
-        // TODO: Enable when SDK exposes vocabularyEntries StateFlow
-        // observationTasks.append(Task {
-        //     for await entries in sdk.vocabularyEntries {
-        //         self.vocabularyEntries = entries
-        //     }
-        // })
+        NotificationCenter.default.addObserver(
+            forName: .subscriptionStatusChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let status = notification.object as? AppSubscriptionStatus else { return }
+            Task { @MainActor in
+                await self.syncPremiumStatus(isSubscribed: status == .subscribed)
+            }
+        }
     }
     
     deinit {
         observationTasks.forEach { $0.cancel() }
+    }
+    
+    // MARK: - Premium Sync
+    
+    private func syncPremiumStatus(isSubscribed: Bool) async {
+        let descriptor = FetchDescriptor<SDUserProfile>()
+        if let sdProfile = try? modelContext.fetch(descriptor).first {
+            sdProfile.isPremium = isSubscribed
+            try? modelContext.save()
+        }
+        
+        if let currentProfile = userProfile {
+            let updatedProfile = UserProfile(
+                id: currentProfile.id,
+                displayName: currentProfile.displayName,
+                nativeLanguage: currentProfile.nativeLanguage,
+                targetLanguages: currentProfile.targetLanguages,
+                currentTargetLanguage: currentProfile.currentTargetLanguage,
+                interests: currentProfile.interests,
+                learningGoals: currentProfile.learningGoals,
+                dailyGoalMinutes: currentProfile.dailyGoalMinutes,
+                voiceSpeed: currentProfile.voiceSpeed,
+                showTranslations: currentProfile.showTranslations,
+                isPremium: isSubscribed,
+                onboardingCompleted: currentProfile.onboardingCompleted,
+                createdAt: currentProfile.createdAt,
+                lastActiveAt: currentProfile.lastActiveAt
+            )
+            try? await sdk.completeOnboarding(profile: updatedProfile)
+        }
     }
     
     private func refreshFromSDK() {
@@ -210,14 +243,23 @@ final class SDKObserver: ObservableObject {
         sdk.requestHint(level: level)
     }
     
-    // MARK: - Native Theater Session (Foundation Models)
+    // MARK: - Native Theater Session
     
     func initializeTheaterSession(config: TheaterSessionConfig) async {
         sessionInitState = .initializing
         currentTheaterConfig = config
-        nativeDialogLines = []
-        currentUserLineIndex = nil
+        currentUserLineId = nil
         isSoloMode = true
+        sessionStartDate = Date()
+        
+        let session = SDConversationSession(
+            scenarioTitle: config.scenarioTitle,
+            targetLanguage: config.targetLanguage,
+            nativeLanguage: config.nativeLanguage
+        )
+        modelContext.insert(session)
+        try? modelContext.save()
+        currentSessionId = session.id
         
         await llmManager.initialize(
             targetLanguage: config.targetLanguage,
@@ -239,51 +281,122 @@ final class SDKObserver: ObservableObject {
     }
     
     func generateNextExchange() async {
-        guard isLLMInitialized, let config = currentTheaterConfig else { return }
+        guard isLLMInitialized, let config = currentTheaterConfig,
+              let sessionId = currentSessionId else { return }
         
-        isGenerating = true
-        defer { isGenerating = false }
+        await MainActor.run { isGenerating = true }
         
-        let prompt = buildExchangePrompt(config: config)
+        defer {
+            Task { @MainActor in isGenerating = false }
+        }
+        
+        let prompt = buildExchangePrompt(config: config, sessionId: sessionId)
         
         do {
             let response = try await llmManager.generate(prompt: prompt)
             let parsed = parseExchangeResponse(response, config: config)
             
-            nativeDialogLines.append(parsed.aiLine)
-            nativeDialogLines.append(parsed.userLine)
-            currentUserLineIndex = nativeDialogLines.count - 1
+            print("🔎 [LLM DEBUG] Raw Response:\n\(response)")
+            print("🔎 [LLM DEBUG] Parsed AI: \(parsed.aiLine.text)")
+            
+            await MainActor.run {
+                let aiMessage = SDConversationMessage(
+                    text: parsed.aiLine.text,
+                    translation: parsed.aiLine.translation,
+                    role: parsed.aiLine.role,
+                    isUser: false,
+                    sessionId: sessionId
+                )
+                let userMessage = SDConversationMessage(
+                    text: parsed.userLine.text,
+                    translation: parsed.userLine.translation,
+                    role: parsed.userLine.role,
+                    isUser: true,
+                    sessionId: sessionId
+                )
+                
+                let descriptor = FetchDescriptor<SDConversationSession>(
+                    predicate: #Predicate { $0.id == sessionId }
+                )
+                if let session = try? self.modelContext.fetch(descriptor).first {
+                    session.messages.append(aiMessage)
+                    session.messages.append(userMessage)
+                    
+                    try? self.modelContext.save()
+                    
+                    self.currentUserLineId = userMessage.id
+                }
+            }
+            
         } catch {
-            if nativeDialogLines.isEmpty {
-                sessionInitState = .error("Failed to generate dialog: \(error.localizedDescription)")
+            print("❌ [LLM ERROR] \(error.localizedDescription)")
+            await MainActor.run {
+                self.sessionInitState = .error(error.localizedDescription)
             }
         }
     }
     
     func confirmUserLine() async {
-        currentUserLineIndex = nil
+        currentUserLineId = nil
         await generateNextExchange()
     }
     
-    func skipUserLine() {
-        currentUserLineIndex = nil
+    func skipUserLine() async {
+        currentUserLineId = nil
+        await generateNextExchange()
     }
     
-    func endTheaterSession() async {
+    func endTheaterSession(save: Bool) async {
+        if let sessionId = currentSessionId {
+            let descriptor = FetchDescriptor<SDConversationSession>(
+                predicate: #Predicate { $0.id == sessionId }
+            )
+            if let session = try? modelContext.fetch(descriptor).first {
+                if save {
+                    let duration = Int(Date().timeIntervalSince(sessionStartDate ?? Date()) / 60)
+                    session.durationMinutes = max(duration, 1)
+                    session.isComplete = true
+                    try? modelContext.save()
+                } else {
+                    modelContext.delete(session)
+                    try? modelContext.save()
+                }
+            }
+        }
+        
         await endSession()
-        nativeDialogLines = []
         sessionInitState = .idle
         currentTheaterConfig = nil
-        currentUserLineIndex = nil
+        currentUserLineId = nil
+        currentSessionId = nil
+        sessionStartDate = nil
     }
     
-    private func buildExchangePrompt(config: TheaterSessionConfig) -> String {
+    func deleteConversationSession(id: String) {
+        let descriptor = FetchDescriptor<SDConversationSession>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let session = try? modelContext.fetch(descriptor).first {
+            modelContext.delete(session)
+            try? modelContext.save()
+        }
+    }
+    
+    private func buildExchangePrompt(config: TheaterSessionConfig, sessionId: String) -> String {
+        var descriptor = FetchDescriptor<SDConversationMessage>(
+            predicate: #Predicate { $0.sessionId == sessionId },
+            sortBy: [SortDescriptor(\.timestamp)]
+        )
+        descriptor.fetchLimit = 6
+        
+        let recentMessages = (try? modelContext.fetch(descriptor)) ?? []
+        
         let previousContext: String
-        if nativeDialogLines.isEmpty {
+        if recentMessages.isEmpty {
             previousContext = "This is the start of the conversation."
         } else {
-            let recentLines = nativeDialogLines.suffix(6).map { line in
-                "\(line.role): \(line.text)"
+            let recentLines = recentMessages.map { msg in
+                "\(msg.role): \(msg.text)"
             }.joined(separator: "\n")
             previousContext = "Previous conversation:\n\(recentLines)"
         }
@@ -292,6 +405,11 @@ final class SDKObserver: ObservableObject {
         \(previousContext)
         
         Generate the next exchange. First provide your line as \(config.aiRole), then suggest what the user (\(config.userRole)) should say.
+        
+        IMPORTANT RULES:
+        - Generate ONLY the immediate next exchange. Do NOT generate a conversation history.
+        - Output exactly ONE AI_LINE and ONE USER_LINE pair.
+        - Do NOT add numbering, extra turns, or continue the conversation beyond one exchange.
         
         Format your response exactly like this:
         AI_LINE: [Your dialog in \(config.targetLanguage)]
@@ -302,46 +420,39 @@ final class SDKObserver: ObservableObject {
     }
     
     private func parseExchangeResponse(_ response: String, config: TheaterSessionConfig) -> (aiLine: NativeDialogLine, userLine: NativeDialogLine) {
-        var aiText = ""
-        var aiTranslation: String?
-        var userText = ""
-        var userTranslation: String?
-        
-        let lines = response.components(separatedBy: .newlines)
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("AI_LINE:") {
-                aiText = String(trimmed.dropFirst("AI_LINE:".count)).trimmingCharacters(in: .whitespaces)
-            } else if trimmed.hasPrefix("AI_TRANSLATION:") {
-                aiTranslation = String(trimmed.dropFirst("AI_TRANSLATION:".count)).trimmingCharacters(in: .whitespaces)
-            } else if trimmed.hasPrefix("USER_LINE:") {
-                userText = String(trimmed.dropFirst("USER_LINE:".count)).trimmingCharacters(in: .whitespaces)
-            } else if trimmed.hasPrefix("USER_TRANSLATION:") {
-                userTranslation = String(trimmed.dropFirst("USER_TRANSLATION:".count)).trimmingCharacters(in: .whitespaces)
+            
+            func findText(pattern: String) -> String? {
+                let regexPattern = "\(pattern)\\**\\s*:?\\s*\"?(.*?)\"?\\s*$"
+                
+                guard let regex = try? NSRegularExpression(pattern: regexPattern, options: [.caseInsensitive, .anchorsMatchLines]) else { return nil }
+                let nsString = response as NSString
+                let results = regex.matches(in: response, options: [], range: NSRange(location: 0, length: nsString.length))
+                
+                if let match = results.first {
+                    return nsString.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                return nil
             }
+
+            let aiText = findText(pattern: "AI_LINE") ?? "..."
+            let aiTranslation = findText(pattern: "AI_TRANSLATION")
+            let userText = findText(pattern: "USER_LINE") ?? "..."
+            let userTranslation = findText(pattern: "USER_TRANSLATION")
+
+            let aiLine = NativeDialogLine(
+                text: aiText,
+                translation: aiTranslation,
+                role: config.aiRole,
+                isUser: false
+            )
+            
+            let userLine = NativeDialogLine(
+                text: userText,
+                translation: userTranslation,
+                role: config.userRole,
+                isUser: true
+            )
+            
+            return (aiLine, userLine)
         }
-        
-        if aiText.isEmpty {
-            aiText = response.components(separatedBy: "USER_LINE:").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? response
-        }
-        if userText.isEmpty {
-            userText = "..."
-        }
-        
-        let aiLine = NativeDialogLine(
-            text: aiText,
-            translation: aiTranslation,
-            role: config.aiRole,
-            isUser: false
-        )
-        
-        let userLine = NativeDialogLine(
-            text: userText,
-            translation: userTranslation,
-            role: config.userRole,
-            isUser: true
-        )
-        
-        return (aiLine, userLine)
-    }
 }
