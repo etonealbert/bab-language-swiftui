@@ -138,16 +138,51 @@ BringABrainLanguageApp
 │       └── LLMManager.swift   # Singleton with memory handling
 ├── Features/
 │   ├── Onboarding/      # Multi-step profile setup
-│   ├── Lobby/           # Scenario selection, dialog library
+│   ├── Home/            # Mode selection + ConnectionTypeSelectionView
+│   ├── Lobby/           # HostLobbyView, JoinScanView, RadarPulseView, scenarios
 │   ├── Theater/         # Active gameplay (SwiftData @Query for messages)
 │   ├── History/         # Persistent chat history (@Query, all users)
 │   ├── Vocabulary/      # SRS flashcard review
-│   ├── Paywall/         # StoreKit 2 subscriptions
+│   ├── Paywall/         # StoreKit 2 subscriptions + PremiumGate
 │   └── Settings/        # User preferences
 └── Shared/
     ├── Components/      # Reusable UI (StatPill, etc.)
     └── Extensions/      # View extensions
 ```
+
+---
+
+## Lobby & Connection Flow
+
+### Navigation Pattern
+Host/Join taps → `ConnectionTypeSelectionView` (sheet) → Bluetooth or Online (premium-gated):
+- **Bluetooth** → dismisses sheet, pushes `HostLobbyView` or `JoinScanView`
+- **Online** → wrapped in `PremiumGate`, locked for non-premium users
+
+### HostLobbyView (Command Center)
+- Scenario carousel with SDK sync (`sdk.setLobbyScenario(scenarioId:)`)
+- Difficulty segmented picker (`sdk.setLobbyDifficulty(difficultyLevel:)`)
+- Connected players list from `BLEHostManager.connectedPeers`
+- Start button disabled until ≥1 player joins AND scenario is selected
+- LLM availability badge on appear (`LLMBridge().checkAvailability()`)
+- BLE advertising lifecycle: `startAdvertising` on appear, `stopAdvertising` on disappear
+
+### JoinScanView
+- **Scanning**: `RadarPulseView` animation + discovered hosts list
+- **Connected (Guest Lobby)**: Read-only scenario/difficulty from `observer.sessionState?.lobbyState`
+- Reacts to host changes via `@Published` on `SDKObserver`
+
+### PremiumGate (REQUIRED for premium features)
+Any feature locked behind premium **MUST** be wrapped in `PremiumGate`:
+```swift
+PremiumGate {
+    // Your premium-only content here
+    SomeView()
+}
+```
+`PremiumGate` checks `SubscriptionManager.shared.subscriptionStatus` and:
+- If `.subscribed`: renders content normally
+- If not subscribed: overlays lock icon + presents `PaywallView` on tap
 
 ---
 

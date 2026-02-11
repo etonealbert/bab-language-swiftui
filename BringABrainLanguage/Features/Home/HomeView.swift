@@ -1,14 +1,17 @@
 import SwiftUI
 
-enum PlayMode: String, Hashable, Codable {
+enum PlayMode: String, Hashable, Codable, Identifiable {
     case solo
     case host
     case join
+    
+    var id: String { rawValue }
 }
 
 struct HomeView: View {
     @EnvironmentObject var observer: SDKObserver
     @State private var navigationPath = NavigationPath()
+    @State private var selectedMode: PlayMode?
     @Namespace private var namespace
     
     var body: some View {
@@ -30,7 +33,7 @@ struct HomeView: View {
                         subtitle: "Start a local game",
                         description: "Friends join via Bluetooth"
                     ) {
-                        navigationPath.append(PlayMode.host)
+                        selectedMode = .host
                     }
                     
                     ModeCard(
@@ -39,7 +42,7 @@ struct HomeView: View {
                         subtitle: "Scan for nearby hosts",
                         description: "Connect and play together"
                     ) {
-                        navigationPath.append(PlayMode.join)
+                        selectedMode = .join
                     }
                 }
                 .padding()
@@ -63,6 +66,24 @@ struct HomeView: View {
                     )
                 )
             }
+            .sheet(item: $selectedMode) { mode in
+                ConnectionTypeSelectionView(mode: mode) { connectionType in
+                    onConnectionTypeSelected(connectionType, for: mode)
+                }
+            }
+        }
+    }
+    
+    private func onConnectionTypeSelected(_ type: ConnectionType, for mode: PlayMode) {
+        switch type {
+        case .bluetooth:
+            // Small delay to let sheet dismiss animation complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                navigationPath.append(mode)
+            }
+        case .online:
+            // Online mode is gated behind premium; handled by PremiumGate in the sheet
+            break
         }
     }
     

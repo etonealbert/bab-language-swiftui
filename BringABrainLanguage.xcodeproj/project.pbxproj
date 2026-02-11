@@ -407,7 +407,7 @@
 				DEVELOPMENT_TEAM = 9P86R4M9F6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Bring a Brain Language ";
+				INFOPLIST_KEY_CFBundleDisplayName = LangStage;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need access to your microphone for voice recognition and language practice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -437,7 +437,7 @@
 				DEVELOPMENT_TEAM = 9P86R4M9F6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Bring a Brain Language ";
+				INFOPLIST_KEY_CFBundleDisplayName = LangStage;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need access to your microphone for voice recognition and language practice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

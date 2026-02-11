@@ -69,11 +69,13 @@ BringABrainLanguage/
 ├── Features/
 │   ├── Home/
 │   │   ├── HomeView.swift                 # Mode selection (Solo/Host/Join)
-│   │   └── ModeCard.swift
+│   │   ├── ModeCard.swift
+│   │   └── ConnectionTypeSelectionView.swift  # Bluetooth/Online sheet
 │   ├── Lobby/
 │   │   ├── SoloScenarioGridView.swift
-│   │   ├── HostLobbyView.swift            # BLE host waiting room
-│   │   ├── JoinScanView.swift             # BLE scan for hosts
+│   │   ├── HostLobbyView.swift            # Host command center (scenario, difficulty, players)
+│   │   ├── JoinScanView.swift             # Radar scan + guest lobby
+│   │   ├── RadarPulseView.swift           # Animated radar pulse for scanning
 │   │   ├── ScenarioGrid.swift
 │   │   ├── ScenarioCard.swift
 │   │   └── ScenarioDisplayData.swift      # Scenario with roles
@@ -96,7 +98,10 @@ BringABrainLanguage/
 │   ├── Onboarding/
 │   │   └── OnboardingCoordinator.swift
 │   └── Paywall/
-│       └── PaywallView.swift
+│       ├── PaywallView.swift
+│       ├── PremiumGate.swift              # Premium lock overlay (wrap any premium feature)
+│       ├── SubscriptionManager.swift
+│       └── SubscriptionStatus.swift
 │
 └── Shared/
     └── Components/
@@ -116,16 +121,22 @@ App Launch → Onboarding (if needed) → PaywallView (soft gate)
                     │                                               │
             ┌───────┼───────┐                               LLM Test (Dev)
           Solo    Host    Join
-            │       │       │
-      Scenarios  Waiting  Scanning
-            │       │       │
-            └───────┴───────┘
-                    ↓
+            │       └───┬───┘
+            │     ConnectionTypeSelectionView (sheet)
+            │       ├── Bluetooth (Local) ──┐
+            │       └── Online (Cloud) ─── PremiumGate
+            │                              │
+      Scenarios              ┌─────────────┤
+            │           HostLobbyView  JoinScanView
+            │           (Command Ctr)  (Radar → Guest Lobby)
+            │                │              │
+            └────────────────┴──────────────┘
+                            ↓
               TheaterView (TabBar hidden)
               - Loading overlay during LLM init
               - Typing indicator during generation
-                    ↓
-            SessionSummaryView
+                            ↓
+              SessionSummaryView
 ```
 
 ### Theater Dialog Flow (Solo Mode)
@@ -166,6 +177,10 @@ Users practice speaking, not composing:
 
 ### BLE Multiplayer
 
+- **Connection Type Selection**: Users choose Bluetooth (local) or Online (cloud, premium)
+- **Host Lobby (Command Center)**: Scenario carousel, difficulty picker, connected players list, AI readiness badge, start button (disabled until ≥1 player joins)
+- **Join Scan**: Radar pulse animation while scanning, discovered host list, tap-to-connect
+- **Guest Lobby**: Read-only view of host's scenario/difficulty via `lobbyState`, live updates
 - **Host Mode**: `CBPeripheralManager` advertises game service
 - **Join Mode**: `CBCentralManager` scans for hosts
 - Up to 4 players per session
