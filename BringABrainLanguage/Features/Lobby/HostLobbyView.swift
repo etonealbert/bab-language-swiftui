@@ -208,56 +208,79 @@ struct HostLobbyView: View {
     
     // MARK: - Connected Players
     
+    /// Total player count: host (always 1) + connected BLE peers
+    private var totalPlayerCount: Int {
+        1 + bleHostManager.connectedPeers.count
+    }
+    
     private var playersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Connected Players")
+                Text("Players")
                     .font(.headline)
                 
                 Spacer()
                 
-                Text("\(bleHostManager.connectedPeers.count)/\(BLEConstants.maxPeers)")
+                Text("\(totalPlayerCount)/\(BLEConstants.maxPeers)")
                     .font(.subheadline.bold())
                     .foregroundStyle(.secondary)
             }
             
-            if bleHostManager.connectedPeers.isEmpty {
-                emptyPlayersCard
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(
-                        Array(bleHostManager.connectedPeers.enumerated()),
-                        id: \.element.identifier
-                    ) { index, peer in
-                        playerRow(index: index, identifier: peer.identifier.uuidString)
-                    }
+            VStack(spacing: 8) {
+                // Host is always player #1
+                hostPlayerRow
+                
+                // Connected guests
+                ForEach(
+                    Array(bleHostManager.connectedPeers.enumerated()),
+                    id: \.element.identifier
+                ) { index, peer in
+                    playerRow(index: index + 1, identifier: peer.identifier.uuidString)
                 }
             }
         }
     }
     
-    private var emptyPlayersCard: some View {
+    private var hostPlayerRow: some View {
         HStack(spacing: 12) {
-            Image(systemName: "person.3.fill")
-                .font(.title2)
-                .foregroundStyle(.tertiary)
-                .symbolEffect(.breathe)
+            Circle()
+                .fill(
+                    .linearGradient(
+                        colors: [.purple, .blue],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Image(systemName: "crown.fill")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white)
+                )
             
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Waiting for players…")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text("Others can find you via Bluetooth")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
+            Text(observer.userProfile?.displayName ?? "You")
+                .font(.subheadline.weight(.medium))
+            
+            Text("Host")
+                .font(.caption2.bold())
+                .foregroundStyle(.purple)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.purple.opacity(0.15))
+                .clipShape(Capsule())
             
             Spacer()
+            
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
         }
-        .padding()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
+    
+
     
     private func playerRow(index: Int, identifier: String) -> some View {
         HStack(spacing: 12) {
@@ -270,7 +293,7 @@ struct HostLobbyView: View {
                         .foregroundStyle(.white)
                 )
             
-            Text("Player \(index + 1)")
+            Text("Guest \(index)")
                 .font(.subheadline.weight(.medium))
             
             Spacer()
@@ -304,7 +327,7 @@ struct HostLobbyView: View {
             .frame(maxWidth: .infinity)
             .padding()
             .background(
-                bleHostManager.connectedPeers.isEmpty || selectedScenarioId.isEmpty
+                selectedScenarioId.isEmpty
                 ? AnyShapeStyle(.gray.opacity(0.3))
                 : AnyShapeStyle(.linearGradient(
                     colors: [.purple, .blue],
@@ -313,13 +336,13 @@ struct HostLobbyView: View {
                   ))
             )
             .foregroundColor(
-                bleHostManager.connectedPeers.isEmpty || selectedScenarioId.isEmpty
+                selectedScenarioId.isEmpty
                 ? .gray
                 : .white
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
-        .disabled(bleHostManager.connectedPeers.isEmpty || selectedScenarioId.isEmpty)
+        .disabled(selectedScenarioId.isEmpty)
         .padding(.top, 8)
     }
 }

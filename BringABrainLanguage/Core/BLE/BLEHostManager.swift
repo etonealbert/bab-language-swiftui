@@ -10,6 +10,9 @@ class BLEHostManager: NSObject, ObservableObject {
     private var peripheralManager: CBPeripheralManager!
     private var gameStateCharacteristic: CBMutableCharacteristic!
     
+    /// Stores the host name if startAdvertising is called before Bluetooth is ready.
+    private var pendingHostName: String?
+    
     override init() {
         super.init()
         peripheralManager = CBPeripheralManager(delegate: self, queue: nil)
@@ -17,10 +20,16 @@ class BLEHostManager: NSObject, ObservableObject {
     
     func startAdvertising(hostName: String) {
         guard peripheralManager.state == .poweredOn else {
-            connectionError = BLEError.bluetoothPoweredOff
+            print("Bluetooth not ready yet. Queuing start for: \(hostName)")
+            pendingHostName = hostName
             return
         }
         
+        pendingHostName = nil
+        startAdvertisingInternal(hostName: hostName)
+    }
+    
+    private func startAdvertisingInternal(hostName: String) {
         let service = CBMutableService(type: BLEConstants.serviceUUID, primary: true)
         
         gameStateCharacteristic = CBMutableCharacteristic(
@@ -40,15 +49,19 @@ class BLEHostManager: NSObject, ObservableObject {
         service.characteristics = [gameStateCharacteristic, playerActionCharacteristic]
         peripheralManager.add(service)
         
+        let shortName = "BAB-\(String(hostName.prefix(8)))"
+            
         peripheralManager.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [BLEConstants.serviceUUID],
-            CBAdvertisementDataLocalNameKey: hostName
+            CBAdvertisementDataLocalNameKey: shortName
         ])
         
         isAdvertising = true
+        print("Advertising Started as \(shortName)")
     }
     
     func stopAdvertising() {
+        pendingHostName = nil
         peripheralManager.stopAdvertising()
         peripheralManager.removeAllServices()
         connectedPeers.removeAll()
@@ -70,7 +83,14 @@ extension BLEHostManager: CBPeripheralManagerDelegate {
         Task { @MainActor in
             switch peripheral.state {
             case .poweredOn:
+                print("Bluetooth Powered On")
                 self.connectionError = nil
+                
+                // Auto-start if we have a pending request
+                if let hostName = self.pendingHostName {
+                    self.startAdvertising(hostName: hostName)
+                }
+                
             case .poweredOff:
                 self.connectionError = BLEError.bluetoothPoweredOff
                 self.stopAdvertising()

@@ -25,7 +25,7 @@ class BLEJoinManager: NSObject, ObservableObject {
         
         discoveredHosts.removeAll()
         centralManager.scanForPeripherals(
-            withServices: [BLEConstants.serviceUUID],
+            withServices: nil,
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
         )
         isScanning = true
@@ -86,8 +86,15 @@ extension BLEJoinManager: CBCentralManagerDelegate {
         rssi RSSI: NSNumber
     ) {
         Task { @MainActor in
-            if !discoveredHosts.contains(where: { $0.identifier == peripheral.identifier }) {
-                discoveredHosts.append(peripheral)
+            // 2. FILTER BY NAME
+            // We only care about devices that start with our special prefix
+            let deviceName = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name
+            
+            if let name = deviceName, name.starts(with: "BAB-") {
+                if !discoveredHosts.contains(where: { $0.identifier == peripheral.identifier }) {
+                    print("Found Valid Host: \(name)")
+                    discoveredHosts.append(peripheral)
+                }
             }
         }
     }
