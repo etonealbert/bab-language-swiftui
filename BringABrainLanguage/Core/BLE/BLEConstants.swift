@@ -1,11 +1,13 @@
 import CoreBluetooth
 
 enum BLEConstants {
-    static let serviceUUID = CBUUID(string: "BAB10000-LANG-0001-0000-000000000001")
-    static let gameStateCharacteristicUUID = CBUUID(string: "BAB10000-LANG-0001-0000-000000000002")
-    static let playerActionCharacteristicUUID = CBUUID(string: "BAB10000-LANG-0001-0000-000000000003")
-    static let chatMessageCharacteristicUUID = CBUUID(string: "BAB10000-LANG-0001-0000-000000000004")
-    static let playerInfoCharacteristicUUID = CBUUID(string: "BAB10000-LANG-0001-0000-000000000005")
+
+    static let serviceUUID = CBUUID(string: "BAB10000-1A46-0001-0000-000000000001")
+    static let gameStateCharacteristicUUID = CBUUID(string: "BAB10000-1A46-0001-0000-000000000002")
+    static let playerActionCharacteristicUUID = CBUUID(string: "BAB10000-1A46-0001-0000-000000000003")
+    static let chatMessageCharacteristicUUID = CBUUID(string: "BAB10000-1A46-0001-0000-000000000004")
+    static let playerInfoCharacteristicUUID = CBUUID(string: "BAB10000-1A46-0001-0000-000000000005")
+    
     static let maxPeers = 4
     static let connectionTimeout: TimeInterval = 30
     static let scanDuration: TimeInterval = 15
